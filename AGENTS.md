@@ -35,6 +35,7 @@ This file defines various coding standards for agents to adhere to.
 - MUST: Wrap every comment block with separator lines above and below
 - MUST: A separator line must use the language comment prefix, one space, then hyphens filling the remainder of the line to the 80-character limit
 - MUST: Do not indent comment blocks; comment separators and comment prose lines must start at the first column allowed by the language syntax
+- MUST: In Docker Compose files, place service comment blocks directly above each service declaration line (for example above "  service-name:") and never inside the service block body
 - MUST: Use sentence-case prose in comments with full sentences and terminal punctuation
 - MUST: For function comments include purpose, numbered arguments, behaviour notes, and failure or exit behaviour where relevant
 - MUST: Do not add inline comments inside function or method bodies unless external constraints require it
