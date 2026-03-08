@@ -7,11 +7,12 @@ set -eu
 
 HEARTBEAT_FILE="${HEARTBEAT_FILE:-/logs/heartbeat.txt}"
 MAX_AGE_SECONDS="${HEALTHCHECK_MAX_AGE_SECONDS:-900}"
-USE_MICROCHECK="${USE_MICROCHECK:-1}"
 
-if [ "$USE_MICROCHECK" = "1" ] && command -v microcheck >/dev/null 2>&1; then
-  microcheck --insecure --wait "1s" --cmd "test -f $HEARTBEAT_FILE"
+if ! command -v microcheck >/dev/null 2>&1; then
+  exit 1
 fi
+
+microcheck --insecure --wait "1s" --cmd "test -f $HEARTBEAT_FILE"
 
 if [ ! -f "$HEARTBEAT_FILE" ]; then
   exit 1

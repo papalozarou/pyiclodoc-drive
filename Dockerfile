@@ -1,9 +1,58 @@
 # ------------------------------------------------------------------------------
 # This Dockerfile defines the backup worker image for Compose-based deployments.
 #
-# The image uses Alpine Linux, installs Python runtime dependencies, and copies
-# worker code and helper scripts into "/app". Runtime data is externalised via
-# mounted volumes for configuration, backup output, and logs.
+# The image uses a multi-stage build to separate dependency installation and
+# binary fetch steps from the final runtime stage. Runtime data is externalised
+# via mounted volumes for configuration, backup output, and logs.
+# ------------------------------------------------------------------------------
+FROM alpine:3.20 AS python-deps
+
+# ------------------------------------------------------------------------------
+# Install Python tooling to build an isolated virtual environment.
+#
+# 1. "python3" provides the interpreter used by the worker.
+# 2. "py3-pip" provides package installation for requirements.
+# 3. "ca-certificates" enables trusted TLS for package downloads.
+# ------------------------------------------------------------------------------
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    ca-certificates
+
+# ------------------------------------------------------------------------------
+# Build Python dependencies in "/opt/venv" for transfer into the runtime stage.
+# ------------------------------------------------------------------------------
+WORKDIR /build
+COPY requirements.txt /build/requirements.txt
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir -r /build/requirements.txt
+
+# ------------------------------------------------------------------------------
+# Fetch architecture-specific "microcheck" as a required runtime binary.
+#
+# N.B.
+# The build fails for unsupported architectures or download failures.
+# ------------------------------------------------------------------------------
+FROM alpine:3.20 AS microcheck-fetch
+RUN apk add --no-cache \
+    ca-certificates \
+    curl
+
+# ------------------------------------------------------------------------------
+# Download and install executable "microcheck" for the current architecture.
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    arch="$(apk --print-arch)"; \
+    case "$arch" in \
+      x86_64) target="amd64" ;; \
+      aarch64) target="arm64" ;; \
+      *) echo "Unsupported architecture for microcheck: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/tarampampam/microcheck/releases/latest/download/microcheck-linux-${target}" -o /usr/local/bin/microcheck; \
+    chmod +x /usr/local/bin/microcheck
+
+# ------------------------------------------------------------------------------
+# Build the final runtime image with only required runtime dependencies.
 # ------------------------------------------------------------------------------
 FROM alpine:3.20
 
@@ -12,46 +61,25 @@ FROM alpine:3.20
 #
 # 1. Disable bytecode file writes to keep writable layers clean.
 # 2. Enable unbuffered stdout and stderr for immediate log visibility.
+# 3. Prefer binaries from the transferred virtual environment.
 # ------------------------------------------------------------------------------
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:${PATH}"
 
 # ------------------------------------------------------------------------------
-# Install required OS packages for runtime dependencies and health checks.
+# Install runtime packages only.
 #
-# 1. "python3" and "py3-pip" provide the Python runtime and package installer.
+# 1. "python3" provides the interpreter used by installed dependencies.
 # 2. "su-exec" supports user switching in entrypoint workflows.
-# 3. "ca-certificates" and "curl" support secure outbound HTTPS requests.
+# 3. "ca-certificates" supports secure outbound HTTPS requests.
 # 4. "tzdata" ensures timezone-aware behaviour when required.
-# 5. "jq" supports JSON parsing in shell-based operations.
 # ------------------------------------------------------------------------------
 RUN apk add --no-cache \
     python3 \
-    py3-pip \
     su-exec \
     ca-certificates \
-    curl \
-    tzdata \
-    jq
-
-# ------------------------------------------------------------------------------
-# Download "microcheck" for supported architectures when available.
-#
-# 1. Detect Alpine architecture and map to release artifact naming.
-# 2. Attempt download and chmod without failing the image build if missing.
-#
-# N.B.
-# Health checks remain functional without "microcheck"; this binary is optional.
-# ------------------------------------------------------------------------------
-RUN set -eux; \
-    arch="$(apk --print-arch)"; \
-    target=""; \
-    [ "$arch" = "x86_64" ] && target="amd64" || true; \
-    [ "$arch" = "aarch64" ] && target="arm64" || true; \
-    if [ -n "$target" ]; then \
-      curl -fsSL "https://github.com/tarampampam/microcheck/releases/latest/download/microcheck-linux-${target}" -o /usr/local/bin/microcheck || true; \
-      chmod +x /usr/local/bin/microcheck || true; \
-    fi
+    tzdata
 
 # ------------------------------------------------------------------------------
 # Set the application working directory for all following instructions.
@@ -59,10 +87,10 @@ RUN set -eux; \
 WORKDIR /app
 
 # ------------------------------------------------------------------------------
-# Copy and install Python dependencies first to improve build layer reuse.
+# Copy runtime assets from previous build stages.
 # ------------------------------------------------------------------------------
-COPY requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+COPY --from=python-deps /opt/venv /opt/venv
+COPY --from=microcheck-fetch /usr/local/bin/microcheck /usr/local/bin/microcheck
 
 # ------------------------------------------------------------------------------
 # Copy worker application source code and operational scripts into the image.
@@ -73,7 +101,7 @@ COPY scripts /app/scripts
 # ------------------------------------------------------------------------------
 # Mark startup scripts as executable so entrypoint and launcher can run.
 # ------------------------------------------------------------------------------
-RUN chmod +x /app/scripts/entrypoint.sh /app/scripts/start.sh
+RUN chmod +x /app/scripts/entrypoint.sh /app/scripts/start.sh /usr/local/bin/microcheck
 
 # ------------------------------------------------------------------------------
 # Declare persistent mount points used by Compose volume bindings.

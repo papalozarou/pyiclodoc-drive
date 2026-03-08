@@ -15,7 +15,7 @@ This project provides a minimal Alpine-based Docker container that runs as a non
 - Session persistence in `/config/session` and cookie persistence in `/config/cookies`.
 - Compatibility symlinks in `/config/icloudpd/{cookies,session}` for interoperability.
 - First-run safety net that samples local file permissions and blocks risky overwrite attempts.
-- Healthcheck based on heartbeat freshness, with optional `microcheck` support.
+- Healthcheck based on heartbeat freshness, with required `microcheck` checks.
 
 ## Telegram commands
 
