@@ -1,0 +1,71 @@
+# This compose file demonstrates running multiple iCloud Drive backup workers with isolated state.
+services:
+  icloud_alice:
+    build: .
+    container_name: icloud_alice
+    environment:
+      TZ: "${TZ:-UTC}"
+      PUID: 1000
+      PGID: 1000
+      CONTAINER_USERNAME: alice
+      BACKUP_INTERVAL_MINUTES: 360
+      STARTUP_DELAY_SECONDS: 15
+      REAUTH_INTERVAL_DAYS: 30
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      ICLOUD_EMAIL_FILE: /run/secrets/alice_icloud_email
+      ICLOUD_PASSWORD_FILE: /run/secrets/alice_icloud_password
+    volumes:
+      - ./data/alice/config:/config
+      - ./data/alice/output:/output
+      - ./data/alice/logs:/logs
+    secrets:
+      - telegram_bot_token
+      - alice_icloud_email
+      - alice_icloud_password
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  icloud_bob:
+    build: .
+    container_name: icloud_bob
+    environment:
+      TZ: "${TZ:-UTC}"
+      PUID: 1000
+      PGID: 1000
+      CONTAINER_USERNAME: bob
+      BACKUP_INTERVAL_MINUTES: 360
+      STARTUP_DELAY_SECONDS: 60
+      REAUTH_INTERVAL_DAYS: 30
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      ICLOUD_EMAIL_FILE: /run/secrets/bob_icloud_email
+      ICLOUD_PASSWORD_FILE: /run/secrets/bob_icloud_password
+    volumes:
+      - ./data/bob/config:/config
+      - ./data/bob/output:/output
+      - ./data/bob/logs:/logs
+    secrets:
+      - telegram_bot_token
+      - bob_icloud_email
+      - bob_icloud_password
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token.txt
+  alice_icloud_email:
+    file: ./secrets/alice_icloud_email.txt
+  alice_icloud_password:
+    file: ./secrets/alice_icloud_password.txt
+  bob_icloud_email:
+    file: ./secrets/bob_icloud_email.txt
+  bob_icloud_password:
+    file: ./secrets/bob_icloud_password.txt

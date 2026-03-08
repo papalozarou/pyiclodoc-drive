@@ -1,0 +1,86 @@
+# ------------------------------------------------------------------------------
+# Baseline `.gitignore` for new Git projects.
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+# Project-specific ignores.
+#
+# Add project-specific patterns in this section.
+# ------------------------------------------------------------------------------
+.github/copilot-instructions.md
+.shellcheckrc
+CLAUDE.md
+scratchpad.sh
+test.sh
+TODO.md
+
+# ------------------------------------------------------------------------------
+# Environment and secrets.
+# ------------------------------------------------------------------------------
+.env
+.env.*.local
+.env.local
+secrets/
+
+# ------------------------------------------------------------------------------
+# Python artifacts.
+# ------------------------------------------------------------------------------
+.eggs/
+.mypy_cache/
+.nox/
+.pytest_cache/
+.ruff_cache/
+.tox/
+.venv/
+*.egg-info/
+*.py[cod]
+*.pyd
+*.so
+__pycache__/
+build/
+dist/
+venv/
+coverage.xml
+htmlcov/
+
+# ------------------------------------------------------------------------------
+# Node and frontend artifacts.
+# ------------------------------------------------------------------------------
+.next/
+.npm/
+.nuxt/
+.pnpm-store/
+.svelte-kit/
+coverage/
+node_modules/
+
+# ------------------------------------------------------------------------------
+# Runtime and compose files.
+# ------------------------------------------------------------------------------
+*.log
+*.sqlite3
+*.tmp
+compose.yml
+docker-compose.yml
+config/
+logs/
+output/
+
+# ------------------------------------------------------------------------------
+# IDE and operating system files.
+# ------------------------------------------------------------------------------
+._*
+.AppleDouble
+.DS_Store
+.LSOverride
+.Spotlight-V100
+.Trashes
+.idea/
+.nfs*
+.vscode/
+*.swp
+*.swo
+*~
+$RECYCLE.BIN/
+Desktop.ini
+Thumbs.db
