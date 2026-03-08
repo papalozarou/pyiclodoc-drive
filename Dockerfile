@@ -31,25 +31,10 @@ RUN python3 -m venv /opt/venv && \
 # Fetch architecture-specific "microcheck" as a required runtime binary.
 #
 # N.B.
-# The build fails for unsupported architectures or download failures.
+# Pinning "MCK_VER" makes the build reproducible across environments.
 # ------------------------------------------------------------------------------
-FROM alpine:3.20 AS microcheck-fetch
-RUN apk add --no-cache \
-    ca-certificates \
-    curl
-
-# ------------------------------------------------------------------------------
-# Download and install executable "microcheck" for the current architecture.
-# ------------------------------------------------------------------------------
-RUN set -eux; \
-    arch="$(apk --print-arch)"; \
-    case "$arch" in \
-      x86_64) target="amd64" ;; \
-      aarch64) target="arm64" ;; \
-      *) echo "Unsupported architecture for microcheck: $arch" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://github.com/tarampampam/microcheck/releases/latest/download/microcheck-linux-${target}" -o /usr/local/bin/microcheck; \
-    chmod +x /usr/local/bin/microcheck
+ARG MCK_VER=v1.0.1
+FROM ghcr.io/tarampampam/microcheck:${MCK_VER} AS microcheck
 
 # ------------------------------------------------------------------------------
 # Build the final runtime image with only required runtime dependencies.
@@ -90,7 +75,7 @@ WORKDIR /app
 # Copy runtime assets from previous build stages.
 # ------------------------------------------------------------------------------
 COPY --from=python-deps /opt/venv /opt/venv
-COPY --from=microcheck-fetch /usr/local/bin/microcheck /usr/local/bin/microcheck
+COPY --from=microcheck /usr/local/bin/microcheck /usr/local/bin/microcheck
 
 # ------------------------------------------------------------------------------
 # Copy worker application source code and operational scripts into the image.
