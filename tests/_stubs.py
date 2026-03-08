@@ -1,8 +1,9 @@
-"""This helper module installs dependency stubs for isolated unit testing.
-
-Reference for module injection via sys.modules:
-https://docs.python.org/3/library/sys.html#sys.modules
-"""
+# ------------------------------------------------------------------------------
+# This helper module installs dependency stubs for isolated unit testing.
+#
+# Notes:
+# https://docs.python.org/3/library/sys.html#sys.modules
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

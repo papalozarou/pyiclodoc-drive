@@ -1,4 +1,7 @@
-"""This module wraps pyicloud authentication, MFA, session persistence, and drive file access."""
+# ------------------------------------------------------------------------------
+# This module wraps pyicloud authentication, MFA, session persistence, and
+# drive file access.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -25,6 +28,13 @@ class RemoteEntry:
 class ICloudDriveClient:
     """This class encapsulates iCloud authentication and drive traversal operations."""
 
+    # --------------------------------------------------------------------------
+    # This function stores runtime configuration and initialises client state.
+    #
+    # 1. "CONFIG" is the runtime configuration model used by this client.
+    #
+    # Returns: None.
+    # --------------------------------------------------------------------------
     def __init__(self, CONFIG: AppConfig):
         """This constructor stores runtime configuration and initialises client state."""
         self.config = CONFIG

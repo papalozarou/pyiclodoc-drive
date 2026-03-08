@@ -1,8 +1,10 @@
-"""This test module verifies incremental sync decisions and first-run safety helper behaviour.
-
-Reference for Python file permission bits:
-https://docs.python.org/3/library/os.html#os.stat_result
-"""
+# ------------------------------------------------------------------------------
+# This test module verifies incremental sync decisions and first-run safety
+# helper behaviour.
+#
+# Notes:
+# https://docs.python.org/3/library/os.html#os.stat_result
+# ------------------------------------------------------------------------------
 
 from pathlib import Path
 import tempfile

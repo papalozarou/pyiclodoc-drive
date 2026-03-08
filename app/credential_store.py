@@ -1,4 +1,7 @@
-"""This module provides a small keychain wrapper for persistent iCloud credential storage."""
+# ------------------------------------------------------------------------------
+# This module provides a small keychain wrapper for persistent iCloud
+# credential storage.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

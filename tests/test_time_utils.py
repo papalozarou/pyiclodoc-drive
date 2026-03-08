@@ -1,8 +1,10 @@
-"""This test module verifies timezone selection from the TZ environment variable.
-
-Reference for zoneinfo usage:
-https://docs.python.org/3/library/zoneinfo.html
-"""
+# ------------------------------------------------------------------------------
+# This test module verifies timezone selection from the "TZ" environment
+# variable.
+#
+# Notes:
+# https://docs.python.org/3/library/zoneinfo.html
+# ------------------------------------------------------------------------------
 
 import os
 import unittest

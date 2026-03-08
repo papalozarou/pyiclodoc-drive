@@ -1,8 +1,10 @@
-"""This test module verifies Telegram command parsing behaviour for backup and authentication triggers.
-
-Reference for expected Bot API update shape:
-https://core.telegram.org/bots/api#update
-"""
+# ------------------------------------------------------------------------------
+# This test module verifies Telegram command parsing behaviour for backup and
+# authentication triggers.
+#
+# Notes:
+# https://core.telegram.org/bots/api#update
+# ------------------------------------------------------------------------------
 
 import unittest
 

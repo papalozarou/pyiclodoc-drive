@@ -1,4 +1,7 @@
-"""This module centralises environment-driven settings for the iCloud backup worker."""
+# ------------------------------------------------------------------------------
+# This module centralises environment-driven settings for the iCloud backup
+# worker.
+# ------------------------------------------------------------------------------
 
 from dataclasses import dataclass
 from pathlib import Path

@@ -1,4 +1,7 @@
-"""This module manages persisted runtime state such as manifests and authentication metadata."""
+# ------------------------------------------------------------------------------
+# This module manages persisted runtime state such as manifests and
+# authentication metadata.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

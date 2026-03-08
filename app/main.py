@@ -1,4 +1,6 @@
-"""This module runs the backup worker loop and coordinates auth and sync."""
+# ------------------------------------------------------------------------------
+# This module runs the backup worker loop and coordinates auth and sync.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

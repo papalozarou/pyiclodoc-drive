@@ -1,4 +1,6 @@
+# ------------------------------------------------------------------------------
 # This compose file demonstrates isolated iCloud Drive backup workers.
+# ------------------------------------------------------------------------------
 name: iclouddd-docker
 
 secrets:

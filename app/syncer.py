@@ -1,4 +1,7 @@
-"""This module performs incremental iCloud Drive synchronisation with manifest and safety-net logic."""
+# ------------------------------------------------------------------------------
+# This module performs incremental iCloud Drive synchronisation with manifest
+# and safety-net logic.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

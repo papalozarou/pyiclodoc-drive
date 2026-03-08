@@ -1,4 +1,7 @@
-"""This module provides timezone-aware current time helpers based on the container TZ setting."""
+# ------------------------------------------------------------------------------
+# This module provides timezone-aware current time helpers based on the
+# container "TZ" setting.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
-"""This test module validates authentication reminder windows and reauthentication state transitions.
-
-Reference for timezone-aware datetime handling:
-https://docs.python.org/3/library/datetime.html#aware-and-naive-objects
-"""
+# ------------------------------------------------------------------------------
+# This test module validates authentication reminder windows and
+# reauthentication state transitions.
+#
+# Notes:
+# https://docs.python.org/3/library/datetime.html#aware-and-naive-objects
+# ------------------------------------------------------------------------------
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

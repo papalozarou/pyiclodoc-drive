@@ -1,4 +1,7 @@
-"""This module provides lightweight structured logging helpers for console and file output."""
+# ------------------------------------------------------------------------------
+# This module provides lightweight structured logging helpers for console and
+# file output.
+# ------------------------------------------------------------------------------
 
 from pathlib import Path
 

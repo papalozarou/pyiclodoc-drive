@@ -1,4 +1,7 @@
-"""This module handles Telegram Bot API messaging and command polling for backup control."""
+# ------------------------------------------------------------------------------
+# This module handles Telegram Bot API messaging and command polling for
+# backup control.
+# ------------------------------------------------------------------------------
 
 from __future__ import annotations
 
