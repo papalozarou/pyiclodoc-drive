@@ -19,23 +19,25 @@ install_dependency_stubs()
 from app.syncer import collect_mismatches, count_modes, most_common_mode, needs_transfer
 
 
+# ------------------------------------------------------------------------------
+# This data class mirrors production remote-entry shape used by helpers.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class RemoteEntry:
-    """This test data class mirrors the production remote-entry shape used by sync helpers."""
-
     path: str
     is_dir: bool
     size: int
     modified: str
 
 
+# ------------------------------------------------------------------------------
+# These tests verify manifest diffing and permission helper behaviour.
+# ------------------------------------------------------------------------------
 class TestSyncerHelpers(unittest.TestCase):
-    """These tests ensure manifest diffing and permission checks behave predictably."""
-
-    # --------------------------------------------------------------------------
-    # This test confirms a file transfer is requested when no manifest
-    # entry exists.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms a file transfer is requested when no manifest
+# entry exists.
+# --------------------------------------------------------------------------
     def test_needs_transfer_for_new_file(self) -> None:
         ENTRY = RemoteEntry(
             path="docs/a.txt",
@@ -46,9 +48,9 @@ class TestSyncerHelpers(unittest.TestCase):
 
         self.assertTrue(needs_transfer(ENTRY, {}))
 
-    # --------------------------------------------------------------------------
-    # This test confirms unchanged file metadata does not trigger a transfer.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms unchanged file metadata does not trigger a transfer.
+# --------------------------------------------------------------------------
     def test_no_transfer_for_unchanged_file(self) -> None:
         ENTRY = RemoteEntry(
             path="docs/a.txt",
@@ -66,10 +68,10 @@ class TestSyncerHelpers(unittest.TestCase):
 
         self.assertFalse(needs_transfer(ENTRY, MANIFEST))
 
-    # --------------------------------------------------------------------------
-    # This test confirms mode counting and mismatch detection identify
-    # outlier permissions.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms mode counting and mismatch detection identify
+# outlier permissions.
+# --------------------------------------------------------------------------
     def test_mode_counting_and_mismatch_detection(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             BASE = Path(TMPDIR)

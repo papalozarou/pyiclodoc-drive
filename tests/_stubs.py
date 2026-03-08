@@ -19,9 +19,10 @@ def install_dependency_stubs() -> None:
     if "requests" not in sys.modules:
         REQUESTS_MODULE = types.ModuleType("requests")
 
+# ----------------------------------------------------------------------
+# This response stub mirrors only attributes used by project code.
+# ----------------------------------------------------------------------
         class _Response:
-            """This response stub mirrors only attributes used by project code."""
-
             ok = True
 
             def json(self):
@@ -43,9 +44,10 @@ def install_dependency_stubs() -> None:
     if "pyicloud" not in sys.modules:
         PYICLOUD_MODULE = types.ModuleType("pyicloud")
 
+# ----------------------------------------------------------------------
+# This pyicloud stub provides constructor compatibility for imports.
+# ----------------------------------------------------------------------
         class PyiCloudService:
-            """This pyicloud stub provides constructor compatibility for imports."""
-
             def __init__(self, *ARGS, **KWARGS):
                 _ = (ARGS, KWARGS)
                 self.requires_2fa = False
@@ -91,9 +93,10 @@ def install_dependency_stubs() -> None:
         ALT_MODULE = types.ModuleType("keyrings.alt")
         FILE_MODULE = types.ModuleType("keyrings.alt.file")
 
+# ----------------------------------------------------------------------
+# This keyring backend stub satisfies runtime imports for tests.
+# ----------------------------------------------------------------------
         class PlaintextKeyring:
-            """This keyring backend stub satisfies runtime imports for tests."""
-
             pass
 
         FILE_MODULE.PlaintextKeyring = PlaintextKeyring

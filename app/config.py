@@ -8,10 +8,12 @@ from pathlib import Path
 import os
 
 
+#
+# ------------------------------------------------------------------------------
+# This data class holds validated configuration values used across worker code.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class AppConfig:
-    """This data class holds validated configuration values used across worker code."""
-
     container_username: str
     icloud_email: str
     icloud_password: str

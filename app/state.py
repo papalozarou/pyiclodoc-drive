@@ -13,10 +13,11 @@ from typing import Any
 from app.time_utils import now_local_iso
 
 
+# ------------------------------------------------------------------------------
+# This data class stores authentication timestamp and pending auth flags.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class AuthState:
-    """This data class stores the latest offset-aware authentication timestamp and pending authentication state."""
-
     last_auth_utc: str
     auth_pending: bool
     reauth_pending: bool

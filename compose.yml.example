@@ -1,8 +1,17 @@
 # ------------------------------------------------------------------------------
-# This compose file demonstrates isolated iCloud Drive backup workers.
+# This Compose example defines two isolated iCloud Drive backup workers.
+#
+# The file demonstrates service-level separation, secret-file wiring, and
+# host/container environment variable mapping via ".env.example".
 # ------------------------------------------------------------------------------
 name: iclouddd-docker
 
+# ------------------------------------------------------------------------------
+# Define secret-file mappings consumed by worker services.
+#
+# Each secret maps to a local file path under "./secrets".
+# Services reference these by secret name under their "secrets" key.
+# ------------------------------------------------------------------------------
 secrets:
   telegram_bot_token:
     file: ./secrets/telegram_bot_token.txt
@@ -15,7 +24,18 @@ secrets:
   bob_icloud_password:
     file: ./secrets/bob_icloud_password.txt
 
+# ------------------------------------------------------------------------------
+# Define backup worker services.
+#
+# Each service keeps state in an isolated "./data/<name>" directory tree.
+# Shared host values use "H_" variables and service values use "C_<SVC>_"
+# variables loaded from ".env.example".
+# ------------------------------------------------------------------------------
 services:
+# ------------------------------------------------------------------------------
+# Service "icloud_alice" runs the worker with isolated Alice state paths.
+# This service reads configuration from "C_ICA_*" and shared host values.
+# ------------------------------------------------------------------------------
   icloud_alice:
     container_name: icloud_alice
     build: .
@@ -46,6 +66,10 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+# ------------------------------------------------------------------------------
+# Service "icloud_bob" runs the worker with isolated Bob state paths.
+# This service reads configuration from "C_ICB_*" and shared host values.
+# ------------------------------------------------------------------------------
   icloud_bob:
     container_name: icloud_bob
     build: .

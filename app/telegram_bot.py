@@ -10,18 +10,20 @@ import requests
 from typing import Any
 
 
+# ------------------------------------------------------------------------------
+# This data class defines token and chat settings for Telegram integration.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class TelegramConfig:
-    """This data class defines token and chat settings for Telegram integration."""
-
     bot_token: str
     chat_id: str
 
 
+# ------------------------------------------------------------------------------
+# This data class represents a parsed command accepted from Telegram updates.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class CommandEvent:
-    """This data class represents a parsed command message issued by the configured chat."""
-
     command: str
     args: str
     update_id: int

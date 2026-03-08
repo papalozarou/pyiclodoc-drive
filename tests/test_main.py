@@ -27,23 +27,24 @@ def iso_days_ago(DAYS: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=DAYS)).isoformat()
 
 
+# ------------------------------------------------------------------------------
+# These tests verify reminder behaviour for five-day and two-day thresholds.
+# ------------------------------------------------------------------------------
 class TestMainReminderLogic(unittest.TestCase):
-    """These tests verify reminder behaviour at the documented five-day and two-day thresholds."""
-
-    # --------------------------------------------------------------------------
-    # This test confirms the remaining-day calculation tracks elapsed days
-    # within expected bounds.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms the remaining-day calculation tracks elapsed days
+# within expected bounds.
+# --------------------------------------------------------------------------
     def test_reauth_days_left(self) -> None:
         REMAINING = reauth_days_left(iso_days_ago(25), 30)
 
         self.assertGreaterEqual(REMAINING, 4)
         self.assertLessEqual(REMAINING, 5)
 
-    # --------------------------------------------------------------------------
-    # This test confirms the five-day alert stage is recorded when the
-    # threshold is reached.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms the five-day alert stage is recorded when the
+# threshold is reached.
+# --------------------------------------------------------------------------
     def test_process_reauth_reminders_sets_alert5(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             STATE_PATH = Path(TMPDIR) / "auth_state.json"
@@ -60,10 +61,10 @@ class TestMainReminderLogic(unittest.TestCase):
             self.assertEqual(UPDATED.reminder_stage, "alert5")
             self.assertFalse(UPDATED.reauth_pending)
 
-    # --------------------------------------------------------------------------
-    # This test confirms the two-day prompt stage enables reauthentication
-    # pending state.
-    # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# This test confirms the two-day prompt stage enables reauthentication
+# pending state.
+# --------------------------------------------------------------------------
     def test_process_reauth_reminders_sets_prompt2(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             STATE_PATH = Path(TMPDIR) / "auth_state.json"

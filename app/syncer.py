@@ -12,19 +12,21 @@ from typing import Any
 from app.icloud_client import ICloudDriveClient, RemoteEntry
 
 
+# ------------------------------------------------------------------------------
+# This data class records safety-net findings used to block unsafe sync runs.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class SafetyNetResult:
-    """This data class records first-run permission findings used to avoid destructive overwrites."""
-
     should_block: bool
     expected_mode: str
     mismatched_samples: list[str]
 
 
+# ------------------------------------------------------------------------------
+# This data class captures per-run transfer summary metrics.
+# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class SyncResult:
-    """This data class captures summary metrics for a backup run."""
-
     total_files: int
     transferred_files: int
     skipped_files: int
