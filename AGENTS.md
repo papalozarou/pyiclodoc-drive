@@ -74,6 +74,7 @@ Examples:
 - MUST: Prefer checked-in example variants for compose files (for example `compose.yml.example` and `docker-compose.yml.example`)
 - MUST: When creating compose examples, ensure real local compose filenames are included in ignore files
 - MUST: Add `TODO.md` to baseline ignore files to keep local project task tracking out of version control unless explicitly requested
+- MUST: In ignore files, order declarations within each section as follows: 1) dot-prefixed entries (".name"), 2) wildcard entries ("*name"), 3) exact matches; and keep alphabetical order within each group
 - MUST: Use UPPER_SNAKE_CASE for variable names by default unless language-specific standards override this
 - MUST: Only deviate from variable naming rules when required by external interfaces, libraries, or framework constraints
 - MUST: Name functions and methods using verbValue or verbObject patterns
