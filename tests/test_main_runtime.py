@@ -420,5 +420,241 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertFalse(REQUESTED)
 
 
+# ------------------------------------------------------------------------------
+# These tests verify "main()" startup and loop control-flow branches.
+# ------------------------------------------------------------------------------
+class TestMainEntrypoint(unittest.TestCase):
+# --------------------------------------------------------------------------
+# This test confirms startup validation errors return non-zero status.
+# --------------------------------------------------------------------------
+    def test_main_returns_1_for_validation_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=["bad config"]):
+                            with patch("app.main.log_line") as LOG_LINE:
+                                RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 1)
+            LOG_LINE.assert_called()
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot mode returns 2 when auth is incomplete.
+# --------------------------------------------------------------------------
+    def test_main_run_once_returns_2_when_not_authenticated(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, False, "fail")):
+                                            with patch("app.main.notify") as NOTIFY:
+                                                RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 2)
+            NOTIFY.assert_called_with(
+                TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id),
+                "One-shot backup skipped because authentication is incomplete.",
+            )
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot mode returns 3 when reauth is pending.
+# --------------------------------------------------------------------------
+    def test_main_run_once_returns_3_when_reauth_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, True, "prompt2")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 3)
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot mode returns 4 when safety-net blocks.
+# --------------------------------------------------------------------------
+    def test_main_run_once_returns_4_when_safety_net_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.enforce_safety_net", return_value=False):
+                                                RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 4)
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot mode returns 0 on successful backup run.
+# --------------------------------------------------------------------------
+    def test_main_run_once_returns_0_on_success(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.enforce_safety_net", return_value=True):
+                                                with patch("app.main.run_backup") as RUN_BACKUP:
+                                                    RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 0)
+            RUN_BACKUP.assert_called_once()
+
+# --------------------------------------------------------------------------
+# This test confirms loop sleeps and continues when not due and no request.
+# --------------------------------------------------------------------------
+    def test_main_loop_sleeps_when_not_due(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"schedule_mode": "daily_time"}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.get_next_run_epoch", return_value=200):
+                                                with patch("app.main.time.time", side_effect=[100, 100]):
+                                                    with patch("app.main.process_reauth_reminders", return_value=STATE):
+                                                        with patch("app.main.process_commands", return_value=([], None)):
+                                                            with patch("app.main.time.sleep", side_effect=SystemExit):
+                                                                with self.assertRaises(SystemExit):
+                                                                    __import__("app.main", fromlist=["main"]).main()
+
+# --------------------------------------------------------------------------
+# This test confirms due loop path skips when auth becomes incomplete.
+# --------------------------------------------------------------------------
+    def test_main_loop_skips_when_not_authenticated(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, False, "fail")):
+                                            with patch("app.main.time.time", side_effect=[100, 100]):
+                                                with patch("app.main.process_reauth_reminders", return_value=STATE):
+                                                    with patch("app.main.process_commands", return_value=([], None)):
+                                                        with patch("app.main.get_next_run_epoch", return_value=160):
+                                                            with patch("app.main.time.sleep", side_effect=SystemExit):
+                                                                with self.assertRaises(SystemExit):
+                                                                    __import__("app.main", fromlist=["main"]).main()
+
+# --------------------------------------------------------------------------
+# This test confirms due loop path skips when reauth is pending.
+# --------------------------------------------------------------------------
+    def test_main_loop_skips_when_reauth_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, True, "prompt2")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.time.time", side_effect=[100, 100]):
+                                                with patch("app.main.process_reauth_reminders", return_value=STATE):
+                                                    with patch("app.main.process_commands", return_value=([], None)):
+                                                        with patch("app.main.get_next_run_epoch", return_value=160):
+                                                            with patch("app.main.time.sleep", side_effect=SystemExit):
+                                                                with self.assertRaises(SystemExit):
+                                                                    __import__("app.main", fromlist=["main"]).main()
+
+# --------------------------------------------------------------------------
+# This test confirms due loop path sleeps when safety-net blocks.
+# --------------------------------------------------------------------------
+    def test_main_loop_sleeps_when_safety_net_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.time.time", side_effect=[100, 100]):
+                                                with patch("app.main.process_reauth_reminders", return_value=STATE):
+                                                    with patch("app.main.process_commands", return_value=([], None)):
+                                                        with patch("app.main.get_next_run_epoch", return_value=160):
+                                                            with patch("app.main.enforce_safety_net", return_value=False):
+                                                                with patch("app.main.time.sleep", side_effect=SystemExit):
+                                                                    with self.assertRaises(SystemExit):
+                                                                        __import__("app.main", fromlist=["main"]).main()
+
+# --------------------------------------------------------------------------
+# This test confirms due loop path runs backup when all checks pass.
+# --------------------------------------------------------------------------
+    def test_main_loop_runs_backup_when_due_and_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
+                                            with patch("app.main.time.time", side_effect=[100, 100]):
+                                                with patch("app.main.process_reauth_reminders", return_value=STATE):
+                                                    with patch("app.main.process_commands", return_value=([], None)):
+                                                        with patch("app.main.get_next_run_epoch", return_value=160):
+                                                            with patch("app.main.enforce_safety_net", return_value=True):
+                                                                with patch("app.main.run_backup") as RUN_BACKUP:
+                                                                    with patch("app.main.time.sleep", side_effect=SystemExit):
+                                                                        with self.assertRaises(SystemExit):
+                                                                            __import__("app.main", fromlist=["main"]).main()
+
+            RUN_BACKUP.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
