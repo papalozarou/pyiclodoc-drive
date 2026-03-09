@@ -34,7 +34,7 @@ secrets:
 services:
 # ------------------------------------------------------------------------------
 # Service "icloud_alice" runs the worker with isolated Alice state paths.
-# This service reads configuration from "C_ICA_*" and shared host values.
+# This service reads configuration from "ALICE_*" and shared host values.
 # ------------------------------------------------------------------------------
   icloud_alice:
     container_name: icloud_alice
@@ -46,16 +46,16 @@ services:
       - alice_icloud_password
     environment:
       TZ: "${H_TZ}"
-      PUID: "${H_UID}"
-      PGID: "${H_GID}"
-      CONTAINER_USERNAME: "${C_ICA_CONTAINER_USERNAME}"
-      BACKUP_INTERVAL_MINUTES: "${C_ICA_BACKUP_INTERVAL_MINUTES}"
-      STARTUP_DELAY_SECONDS: "${C_ICA_STARTUP_DELAY_SECONDS}"
-      REAUTH_INTERVAL_DAYS: "${C_ICA_REAUTH_INTERVAL_DAYS}"
-      TELEGRAM_CHAT_ID: "${H_TG_CHAT_ID}"
-      TELEGRAM_BOT_TOKEN_FILE: "${C_ICA_TELEGRAM_BOT_TOKEN_FILE}"
-      ICLOUD_EMAIL_FILE: "${C_ICA_ICLOUD_EMAIL_FILE}"
-      ICLOUD_PASSWORD_FILE: "${C_ICA_ICLOUD_PASSWORD_FILE}"
+      PUID: "${C_UID}"
+      PGID: "${C_GID}"
+      CONTAINER_USERNAME: "${ALICE_CONTAINER_USERNAME}"
+      BACKUP_INTERVAL_MINUTES: "${ALICE_BACKUP_INTERVAL_MINUTES}"
+      STARTUP_DELAY_SECONDS: "${ALICE_STARTUP_DELAY_SECONDS}"
+      REAUTH_INTERVAL_DAYS: "${ALICE_REAUTH_INTERVAL_DAYS}"
+      TELEGRAM_CHAT_ID: "${H_TGM_CHAT_ID}"
+      TELEGRAM_BOT_TOKEN_FILE: "${ALICE_TELEGRAM_BOT_TOKEN_FILE}"
+      ICLOUD_EMAIL_FILE: "${ALICE_ICLOUD_EMAIL_FILE}"
+      ICLOUD_PASSWORD_FILE: "${ALICE_ICLOUD_PASSWORD_FILE}"
     volumes:
       - ./data/alice/config:/config
       - ./data/alice/output:/output
@@ -68,7 +68,7 @@ services:
 
 # ------------------------------------------------------------------------------
 # Service "icloud_bob" runs the worker with isolated Bob state paths.
-# This service reads configuration from "C_ICB_*" and shared host values.
+# This service reads configuration from "BOB_*" and shared host values.
 # ------------------------------------------------------------------------------
   icloud_bob:
     container_name: icloud_bob
@@ -80,16 +80,16 @@ services:
       - bob_icloud_password
     environment:
       TZ: "${H_TZ}"
-      PUID: "${H_UID}"
-      PGID: "${H_GID}"
-      CONTAINER_USERNAME: "${C_ICB_CONTAINER_USERNAME}"
-      BACKUP_INTERVAL_MINUTES: "${C_ICB_BACKUP_INTERVAL_MINUTES}"
-      STARTUP_DELAY_SECONDS: "${C_ICB_STARTUP_DELAY_SECONDS}"
-      REAUTH_INTERVAL_DAYS: "${C_ICB_REAUTH_INTERVAL_DAYS}"
-      TELEGRAM_CHAT_ID: "${H_TG_CHAT_ID}"
-      TELEGRAM_BOT_TOKEN_FILE: "${C_ICB_TELEGRAM_BOT_TOKEN_FILE}"
-      ICLOUD_EMAIL_FILE: "${C_ICB_ICLOUD_EMAIL_FILE}"
-      ICLOUD_PASSWORD_FILE: "${C_ICB_ICLOUD_PASSWORD_FILE}"
+      PUID: "${C_UID}"
+      PGID: "${C_GID}"
+      CONTAINER_USERNAME: "${BOB_CONTAINER_USERNAME}"
+      BACKUP_INTERVAL_MINUTES: "${BOB_BACKUP_INTERVAL_MINUTES}"
+      STARTUP_DELAY_SECONDS: "${BOB_STARTUP_DELAY_SECONDS}"
+      REAUTH_INTERVAL_DAYS: "${BOB_REAUTH_INTERVAL_DAYS}"
+      TELEGRAM_CHAT_ID: "${H_TGM_CHAT_ID}"
+      TELEGRAM_BOT_TOKEN_FILE: "${BOB_TELEGRAM_BOT_TOKEN_FILE}"
+      ICLOUD_EMAIL_FILE: "${BOB_ICLOUD_EMAIL_FILE}"
+      ICLOUD_PASSWORD_FILE: "${BOB_ICLOUD_PASSWORD_FILE}"
     volumes:
       - ./data/bob/config:/config
       - ./data/bob/output:/output
