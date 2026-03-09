@@ -77,13 +77,6 @@ Startup validation fails when:
   `last` for `monthly`.
 - `BACKUP_INTERVAL_MINUTES < 1` in `interval` mode when not running one-shot.
 
-## Startup delay interaction
-
-`STARTUP_DELAY_SECONDS` delays container startup only.
-
-- It does not add a delay before every recurring run.
-- It can shift when the first scheduling check happens after restart.
-
 ## Manual backup command behaviour
 
 If a user sends `<username> backup`, backup runs immediately.

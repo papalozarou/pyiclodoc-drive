@@ -27,7 +27,6 @@ class AppConfig:
     schedule_weekday: str
     schedule_monthly_week: str
     backup_interval_minutes: int
-    startup_delay_seconds: int
     reauth_interval_days: int
     output_dir: Path
     config_dir: Path
@@ -131,7 +130,6 @@ def load_config() -> AppConfig:
         schedule_weekday=env_value("SCHEDULE_WEEKDAY", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
         backup_interval_minutes=env_int("BACKUP_INTERVAL_MINUTES", 1440),
-        startup_delay_seconds=env_int("STARTUP_DELAY_SECONDS", 0),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,

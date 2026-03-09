@@ -57,27 +57,12 @@ configureUser() {
   chown -R "$PUID:$PGID" /config /output /logs "/home/$CONTAINER_USERNAME"
 }
 
-# ------------------------------------------------------------------------------
-# This function applies startup delay to avoid API bursts.
-# ------------------------------------------------------------------------------
-applyStartupDelay() {
-  STARTUP_DELAY_SECONDS="${STARTUP_DELAY_SECONDS:-0}"
-
-  if [ "$STARTUP_DELAY_SECONDS" -le 0 ]; then
-    return 0
-  fi
-
-  echo "Applying startup delay: ${STARTUP_DELAY_SECONDS}s"
-  sleep "$STARTUP_DELAY_SECONDS"
-}
-
 readSecretVar ICLOUD_EMAIL
 readSecretVar ICLOUD_PASSWORD
 readSecretVar TELEGRAM_BOT_TOKEN
 readSecretVar TELEGRAM_CHAT_ID
 
 configureUser
-applyStartupDelay
 
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"

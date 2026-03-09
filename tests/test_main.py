@@ -58,7 +58,6 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         schedule_weekday="monday",
         schedule_monthly_week="first",
         backup_interval_minutes=1440,
-        startup_delay_seconds=0,
         reauth_interval_days=30,
         output_dir=Path("/tmp/output"),
         config_dir=Path("/tmp/config"),
