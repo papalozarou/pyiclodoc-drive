@@ -75,6 +75,36 @@ The Compose example uses:
 - `/output` for downloaded iCloud Drive files.
 - `/logs` for worker logs and health heartbeat files.
 
+### Config directory structure
+
+Each worker mounts `/config` from its own host path:
+
+- `icloud_alice` maps `/config` to `${ALICE_CONFIG_PATH}`.
+- `icloud_bob` maps `/config` to `${BOB_CONFIG_PATH}`.
+
+Runtime layout inside each worker `/config` directory:
+
+```text
+/config
+├── auth_state.json
+├── manifest.json
+├── safety_net_done.flag
+├── safety_net_blocked.flag
+├── cookies/
+├── session/
+├── icloudpd/
+│   ├── cookies -> /config/cookies
+│   └── session -> /config/session
+└── keyring/
+    └── keyring_pass.cfg
+```
+
+Notes:
+
+- `safety_net_done.flag` is created when the first-run safety check passes.
+- `safety_net_blocked.flag` is created when the first-run safety check blocks.
+- `icloudpd/cookies` and `icloudpd/session` are compatibility symlinks.
+
 ## Run with Docker Compose
 
 1. Copy `compose.yml.example` to `compose.yml` for local use.
