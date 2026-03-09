@@ -44,6 +44,7 @@ The Compose example uses:
 - `H_TZ`, timezone used by worker time calculations.
 - `H_TGM_CHAT_ID`, Telegram chat ID accepted by command parser.
 - `H_DKR_SECRETS`, host path used for Docker secret source files.
+- `H_DATA_PATH`, host base path used for worker data directories.
 
 ### Shared container variables (`C_`)
 
@@ -54,6 +55,9 @@ The Compose example uses:
 ### Service-scoped variables (`ALICE_*`, `BOB_*`)
 
 - `<SVC>_CONTAINER_USERNAME`, command prefix and runtime username.
+- `<SVC>_CONFIG_PATH`, host path mounted to `/config`.
+- `<SVC>_OUTPUT_PATH`, host path mounted to `/output`.
+- `<SVC>_LOGS_PATH`, host path mounted to `/logs`.
 - `<SVC>_BACKUP_INTERVAL_MINUTES`, scheduled backup interval.
 - `<SVC>_STARTUP_DELAY_SECONDS`, startup delay to spread API load.
 - `<SVC>_REAUTH_INTERVAL_DAYS`, reauthentication window length.
@@ -75,18 +79,20 @@ The Compose example uses:
 
 1. Copy `compose.yml.example` to `compose.yml` for local use.
 2. Copy `.env.example` to `.env` and set host/service values.
-3. Create secret files under `${H_DKR_SECRETS}` (default
+3. Set host data mount paths in `.env` using `H_DATA_PATH` and the
+   per-service path variables (`ALICE_*_PATH`, `BOB_*_PATH`).
+4. Create secret files under `${H_DKR_SECRETS}` (default
    `/var/lib/docker/secrets`):
    `telegram_bot_token.txt`, `alice_icloud_email.txt`,
    `alice_icloud_password.txt`, `bob_icloud_email.txt`,
    `bob_icloud_password.txt`.
-4. Build and run:
+5. Build and run:
 
 ```bash
 docker compose up -d --build
 ```
 
-5. Check container and health status:
+6. Check container and health status:
 
 ```bash
 docker compose ps

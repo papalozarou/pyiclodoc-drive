@@ -48,7 +48,7 @@ secrets:
 # ------------------------------------------------------------------------------
 # Define backup worker services.
 #
-# Each service keeps state in an isolated "./data/<name>" directory tree.
+# Each service keeps state in host paths configured through ".env.example".
 # Shared host values use "H_" variables and service values use "ALICE_*" and
 # "BOB_*" variables loaded from ".env.example".
 # ------------------------------------------------------------------------------
@@ -79,9 +79,9 @@ services:
       ICLOUD_EMAIL_FILE: "${ALICE_ICLOUD_EMAIL_FILE}"
       ICLOUD_PASSWORD_FILE: "${ALICE_ICLOUD_PASSWORD_FILE}"
     volumes:
-      - ./data/alice/config:/config
-      - ./data/alice/output:/output
-      - ./data/alice/logs:/logs
+      - ${ALICE_CONFIG_PATH}:/config
+      - ${ALICE_OUTPUT_PATH}:/output
+      - ${ALICE_LOGS_PATH}:/logs
     <<: *default-security
     restart: unless-stopped
 
@@ -111,8 +111,8 @@ services:
       ICLOUD_EMAIL_FILE: "${BOB_ICLOUD_EMAIL_FILE}"
       ICLOUD_PASSWORD_FILE: "${BOB_ICLOUD_PASSWORD_FILE}"
     volumes:
-      - ./data/bob/config:/config
-      - ./data/bob/output:/output
-      - ./data/bob/logs:/logs
+      - ${BOB_CONFIG_PATH}:/config
+      - ${BOB_OUTPUT_PATH}:/output
+      - ${BOB_LOGS_PATH}:/logs
     <<: *default-security
     restart: unless-stopped
