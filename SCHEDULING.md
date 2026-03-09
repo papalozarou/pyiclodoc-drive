@@ -20,7 +20,8 @@ one-shot mode.
 
 ### `SCHEDULE_MODE=weekly`
 
-- Runs on `<SVC>_SCHEDULE_WEEKDAY` at `<SVC>_BACKUP_DAILY_TIME`.
+- Runs on the single day set in `<SVC>_SCHEDULE_WEEKDAYS` at
+  `<SVC>_BACKUP_DAILY_TIME`.
 
 ### `SCHEDULE_MODE=twice_weekly`
 
@@ -29,7 +30,8 @@ one-shot mode.
 
 ### `SCHEDULE_MODE=monthly`
 
-- Runs on `<SVC>_SCHEDULE_MONTHLY_WEEK` `<SVC>_SCHEDULE_WEEKDAY` at
+- Runs on `<SVC>_SCHEDULE_MONTHLY_WEEK` day from
+  `<SVC>_SCHEDULE_WEEKDAYS` at
   `<SVC>_BACKUP_DAILY_TIME`.
 - Example: `first monday` at `02:00`.
 
@@ -41,28 +43,27 @@ one-shot mode.
 
 - `SCHEDULE_MODE=interval`
   - Uses: `BACKUP_INTERVAL_MINUTES`.
-  - Ignores: `BACKUP_DAILY_TIME`, `SCHEDULE_WEEKDAY`,
-    `SCHEDULE_WEEKDAYS`, `SCHEDULE_MONTHLY_WEEK`.
+  - Ignores: `BACKUP_DAILY_TIME`, `SCHEDULE_WEEKDAYS`,
+    `SCHEDULE_MONTHLY_WEEK`.
 
 - `SCHEDULE_MODE=daily_time`
   - Uses: `BACKUP_DAILY_TIME`.
-  - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_WEEKDAY`,
-    `SCHEDULE_WEEKDAYS`, `SCHEDULE_MONTHLY_WEEK`.
-
-- `SCHEDULE_MODE=weekly`
-  - Uses: `SCHEDULE_WEEKDAY`, `BACKUP_DAILY_TIME`.
   - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_WEEKDAYS`,
     `SCHEDULE_MONTHLY_WEEK`.
 
+- `SCHEDULE_MODE=weekly`
+  - Uses: `SCHEDULE_WEEKDAYS` (exactly one day), `BACKUP_DAILY_TIME`.
+  - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_MONTHLY_WEEK`.
+
 - `SCHEDULE_MODE=twice_weekly`
-  - Uses: `SCHEDULE_WEEKDAYS`, `BACKUP_DAILY_TIME`.
-  - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_WEEKDAY`,
-    `SCHEDULE_MONTHLY_WEEK`.
+  - Uses: `SCHEDULE_WEEKDAYS` (exactly two distinct days),
+    `BACKUP_DAILY_TIME`.
+  - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_MONTHLY_WEEK`.
 
 - `SCHEDULE_MODE=monthly`
-  - Uses: `SCHEDULE_MONTHLY_WEEK`, `SCHEDULE_WEEKDAY`,
+  - Uses: `SCHEDULE_MONTHLY_WEEK`, `SCHEDULE_WEEKDAYS` (exactly one day),
     `BACKUP_DAILY_TIME`.
-  - Ignores: `BACKUP_INTERVAL_MINUTES`, `SCHEDULE_WEEKDAYS`.
+  - Ignores: `BACKUP_INTERVAL_MINUTES`.
 
 ## Validation rules
 
@@ -70,9 +71,10 @@ Startup validation fails when:
 
 - `SCHEDULE_MODE` is invalid.
 - `BACKUP_DAILY_TIME` is not valid `HH:MM` for calendar modes.
-- `SCHEDULE_WEEKDAY` is invalid for `weekly`/`monthly`.
+- `SCHEDULE_WEEKDAYS` is not exactly one valid weekday for `weekly`.
 - `SCHEDULE_WEEKDAYS` is not exactly two distinct weekdays for
   `twice_weekly`.
+- `SCHEDULE_WEEKDAYS` is not exactly one valid weekday for `monthly`.
 - `SCHEDULE_MONTHLY_WEEK` is not one of `first`, `second`, `third`, `fourth`,
   `last` for `monthly`.
 - `BACKUP_INTERVAL_MINUTES < 1` in `interval` mode when not running one-shot.

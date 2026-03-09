@@ -24,7 +24,6 @@ class AppConfig:
     schedule_mode: str
     backup_daily_time: str
     schedule_weekdays: str
-    schedule_weekday: str
     schedule_monthly_week: str
     backup_interval_minutes: int
     reauth_interval_days: int
@@ -126,8 +125,7 @@ def load_config() -> AppConfig:
         run_once=env_bool("RUN_ONCE", False),
         schedule_mode=env_value("SCHEDULE_MODE", "interval").lower(),
         backup_daily_time=env_value("BACKUP_DAILY_TIME", "02:00"),
-        schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday,thursday").lower(),
-        schedule_weekday=env_value("SCHEDULE_WEEKDAY", "monday").lower(),
+        schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
         backup_interval_minutes=env_int("BACKUP_INTERVAL_MINUTES", 1440),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),

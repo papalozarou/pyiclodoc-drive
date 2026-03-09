@@ -65,15 +65,25 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
     if CONFIG.schedule_mode == "daily_time" and parse_daily_time(CONFIG.backup_daily_time) is None:
         ERRORS.append("BACKUP_DAILY_TIME must use 24-hour HH:MM format.")
 
-    if CONFIG.schedule_mode == "weekly" and parse_weekday(CONFIG.schedule_weekday) is None:
-        ERRORS.append("SCHEDULE_WEEKDAY must be a valid weekday name.")
+    if (
+        CONFIG.schedule_mode == "weekly"
+        and parse_weekday_list(CONFIG.schedule_weekdays, 1) is None
+    ):
+        ERRORS.append(
+            "SCHEDULE_WEEKDAYS must contain exactly one valid weekday name for weekly mode."
+        )
 
-    if CONFIG.schedule_mode == "twice_weekly" and parse_weekday_list(CONFIG.schedule_weekdays) is None:
+    if (
+        CONFIG.schedule_mode == "twice_weekly"
+        and parse_weekday_list(CONFIG.schedule_weekdays, 2) is None
+    ):
         ERRORS.append("SCHEDULE_WEEKDAYS must contain exactly two distinct weekday names.")
 
     if CONFIG.schedule_mode == "monthly":
-        if parse_weekday(CONFIG.schedule_weekday) is None:
-            ERRORS.append("SCHEDULE_WEEKDAY must be a valid weekday name.")
+        if parse_weekday_list(CONFIG.schedule_weekdays, 1) is None:
+            ERRORS.append(
+                "SCHEDULE_WEEKDAYS must contain exactly one valid weekday name for monthly mode."
+            )
 
         if CONFIG.schedule_monthly_week not in MONTHLY_WEEK_MAP:
             ERRORS.append("SCHEDULE_MONTHLY_WEEK must be one of: first, second, third, fourth, last.")
@@ -152,27 +162,30 @@ def parse_weekday(VALUE: str) -> int | None:
 
 
 # ------------------------------------------------------------------------------
-# This function parses two distinct weekdays for twice-weekly schedules.
+# This function parses a strict weekday list for weekly schedule modes.
 #
 # 1. "VALUE" is comma-separated weekday text list.
+# 2. "EXPECTED_COUNT" is required number of distinct weekdays.
 #
-# Returns: Two-item weekday index list; otherwise None.
+# Returns: Weekday index list; otherwise None.
 # ------------------------------------------------------------------------------
-def parse_weekday_list(VALUE: str) -> list[int] | None:
+def parse_weekday_list(VALUE: str, EXPECTED_COUNT: int) -> list[int] | None:
     PARTS = [ITEM.strip().lower() for ITEM in VALUE.split(",") if ITEM.strip()]
 
-    if len(PARTS) != 2:
+    if len(PARTS) != EXPECTED_COUNT:
         return None
 
-    INDICES = [parse_weekday(PARTS[0]), parse_weekday(PARTS[1])]
+    INDICES = [parse_weekday(PART) for PART in PARTS]
 
-    if INDICES[0] is None or INDICES[1] is None:
+    if any(INDEX is None for INDEX in INDICES):
         return None
 
-    if INDICES[0] == INDICES[1]:
+    DISTINCT = {INDEX for INDEX in INDICES if INDEX is not None}
+
+    if len(DISTINCT) != EXPECTED_COUNT:
         return None
 
-    return [INDICES[0], INDICES[1]]
+    return [INDEX for INDEX in INDICES if INDEX is not None]
 
 
 # ------------------------------------------------------------------------------
@@ -247,7 +260,7 @@ def calculate_next_twice_weekly_run_epoch(
     WEEKDAYS_TEXT: str,
     DAILY_TIME: str,
 ) -> int:
-    WEEKDAYS = parse_weekday_list(WEEKDAYS_TEXT)
+    WEEKDAYS = parse_weekday_list(WEEKDAYS_TEXT, 2)
 
     if WEEKDAYS is None:
         return int(NOW_LOCAL.timestamp())
@@ -372,9 +385,14 @@ def get_next_run_epoch(CONFIG: AppConfig, NOW_EPOCH: int) -> int:
         return calculate_next_daily_run_epoch(now_local(), CONFIG.backup_daily_time)
 
     if CONFIG.schedule_mode == "weekly":
+        WEEKDAYS = parse_weekday_list(CONFIG.schedule_weekdays, 1)
+
+        if WEEKDAYS is None:
+            return NOW_EPOCH
+
         return calculate_next_weekly_run_epoch(
             now_local(),
-            CONFIG.schedule_weekday,
+            WEEKDAY_NAME_BY_INDEX[WEEKDAYS[0]],
             CONFIG.backup_daily_time,
         )
 
@@ -386,9 +404,14 @@ def get_next_run_epoch(CONFIG: AppConfig, NOW_EPOCH: int) -> int:
         )
 
     if CONFIG.schedule_mode == "monthly":
+        WEEKDAYS = parse_weekday_list(CONFIG.schedule_weekdays, 1)
+
+        if WEEKDAYS is None:
+            return NOW_EPOCH
+
         return calculate_next_monthly_run_epoch(
             now_local(),
-            CONFIG.schedule_weekday,
+            WEEKDAY_NAME_BY_INDEX[WEEKDAYS[0]],
             CONFIG.schedule_monthly_week,
             CONFIG.backup_daily_time,
         )

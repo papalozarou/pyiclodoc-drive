@@ -55,7 +55,6 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         schedule_mode="interval",
         backup_daily_time="02:00",
         schedule_weekdays="monday,thursday",
-        schedule_weekday="monday",
         schedule_monthly_week="first",
         backup_interval_minutes=1440,
         reauth_interval_days=30,
@@ -197,14 +196,17 @@ class TestMainValidation(unittest.TestCase):
         self.assertEqual(ERRORS, [])
 
 # --------------------------------------------------------------------------
-# This test confirms weekly mode rejects invalid weekday values.
+# This test confirms weekly mode requires exactly one valid weekday.
 # --------------------------------------------------------------------------
     def test_validate_config_rejects_invalid_weekday(self) -> None:
-        CONFIG = build_config(schedule_mode="weekly", schedule_weekday="funday")
+        CONFIG = build_config(schedule_mode="weekly", schedule_weekdays="monday,thursday")
 
         ERRORS = validate_config(CONFIG)
 
-        self.assertIn("SCHEDULE_WEEKDAY must be a valid weekday name.", ERRORS)
+        self.assertIn(
+            "SCHEDULE_WEEKDAYS must contain exactly one valid weekday name for weekly mode.",
+            ERRORS,
+        )
 
 # --------------------------------------------------------------------------
 # This test confirms twice-weekly mode requires two distinct weekdays.
@@ -225,7 +227,7 @@ class TestMainValidation(unittest.TestCase):
     def test_validate_config_rejects_invalid_monthly_week(self) -> None:
         CONFIG = build_config(
             schedule_mode="monthly",
-            schedule_weekday="monday",
+            schedule_weekdays="monday",
             schedule_monthly_week="fifth",
         )
 
@@ -233,6 +235,23 @@ class TestMainValidation(unittest.TestCase):
 
         self.assertIn(
             "SCHEDULE_MONTHLY_WEEK must be one of: first, second, third, fourth, last.",
+            ERRORS,
+        )
+
+# --------------------------------------------------------------------------
+# This test confirms monthly mode requires exactly one valid weekday.
+# --------------------------------------------------------------------------
+    def test_validate_config_rejects_invalid_monthly_weekdays(self) -> None:
+        CONFIG = build_config(
+            schedule_mode="monthly",
+            schedule_weekdays="monday,thursday",
+            schedule_monthly_week="first",
+        )
+
+        ERRORS = validate_config(CONFIG)
+
+        self.assertIn(
+            "SCHEDULE_WEEKDAYS must contain exactly one valid weekday name for monthly mode.",
             ERRORS,
         )
 
@@ -264,8 +283,9 @@ class TestMainDailySchedule(unittest.TestCase):
 # This test confirms weekday list parsing enforces two distinct entries.
 # --------------------------------------------------------------------------
     def test_parse_weekday_list(self) -> None:
-        self.assertEqual(parse_weekday_list("monday,thursday"), [0, 3])
-        self.assertIsNone(parse_weekday_list("monday,monday"))
+        self.assertEqual(parse_weekday_list("monday", 1), [0])
+        self.assertEqual(parse_weekday_list("monday,thursday", 2), [0, 3])
+        self.assertIsNone(parse_weekday_list("monday,monday", 2))
 
 # --------------------------------------------------------------------------
 # This test confirms next daily run uses same-day target when still ahead.
