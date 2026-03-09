@@ -11,12 +11,20 @@ import tempfile
 import unittest
 
 from dataclasses import dataclass
+from unittest.mock import patch
 
 from tests._stubs import install_dependency_stubs
 
 install_dependency_stubs()
 
-from app.syncer import collect_mismatches, count_modes, most_common_mode, needs_transfer
+from app.syncer import (
+    collect_mismatches,
+    count_modes,
+    get_auto_worker_count,
+    most_common_mode,
+    needs_transfer,
+    perform_incremental_sync,
+)
 
 
 # ------------------------------------------------------------------------------
@@ -28,6 +36,22 @@ class RemoteEntry:
     is_dir: bool
     size: int
     modified: str
+
+
+# ------------------------------------------------------------------------------
+# This class provides a minimal client stub for incremental sync tests.
+# ------------------------------------------------------------------------------
+class FakeClient:
+    def __init__(self, ENTRIES: list[RemoteEntry], DOWNLOAD_RESULTS: dict[str, bool]):
+        self.entries = ENTRIES
+        self.download_results = DOWNLOAD_RESULTS
+
+    def list_entries(self) -> list[RemoteEntry]:
+        return self.entries
+
+    def download_file(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
+        _ = LOCAL_PATH
+        return self.download_results.get(REMOTE_PATH, True)
 
 
 # ------------------------------------------------------------------------------
@@ -95,6 +119,67 @@ class TestSyncerHelpers(unittest.TestCase):
             self.assertEqual(EXPECTED_MODE, "0o644")
             self.assertEqual(COUNTS.get("0o644"), 2)
             self.assertTrue(any("three.txt" in LINE for LINE in MISMATCHES))
+
+# --------------------------------------------------------------------------
+# This test confirms automatic worker sizing falls back to one when CPU
+# count is unavailable.
+# --------------------------------------------------------------------------
+    def test_auto_worker_count_defaults_to_one(self) -> None:
+        with patch("app.syncer.os.cpu_count", return_value=None):
+            self.assertEqual(get_auto_worker_count(), 1)
+
+# --------------------------------------------------------------------------
+# This test confirms automatic worker sizing is capped for high-core hosts.
+# --------------------------------------------------------------------------
+    def test_auto_worker_count_caps_at_eight(self) -> None:
+        with patch("app.syncer.os.cpu_count", return_value=64):
+            self.assertEqual(get_auto_worker_count(), 8)
+
+# --------------------------------------------------------------------------
+# This test confirms automatic worker sizing uses direct CPU count when
+# within normal bounds.
+# --------------------------------------------------------------------------
+    def test_auto_worker_count_uses_cpu_count_within_bounds(self) -> None:
+        with patch("app.syncer.os.cpu_count", return_value=4):
+            self.assertEqual(get_auto_worker_count(), 4)
+
+# --------------------------------------------------------------------------
+# This test confirms incremental sync reports transfer, skip, and error
+# counts correctly with mixed file outcomes.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_counts_results(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs", True, 0, "2026-03-09T00:00:00Z"),
+            RemoteEntry("docs/new.txt", False, 11, "2026-03-09T00:00:00Z"),
+            RemoteEntry("docs/unchanged.txt", False, 10, "2026-03-08T00:00:00Z"),
+            RemoteEntry("docs/fail.txt", False, 12, "2026-03-09T00:00:00Z"),
+        ]
+        MANIFEST = {
+            "docs/unchanged.txt": {
+                "is_dir": False,
+                "size": 10,
+                "modified": "2026-03-08T00:00:00Z",
+            }
+        }
+        CLIENT = FakeClient(
+            ENTRIES,
+            {
+                "docs/new.txt": True,
+                "docs/fail.txt": False,
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST)
+
+        self.assertEqual(SUMMARY.total_files, 3)
+        self.assertEqual(SUMMARY.transferred_files, 1)
+        self.assertEqual(SUMMARY.skipped_files, 1)
+        self.assertEqual(SUMMARY.error_files, 1)
+        self.assertIn("docs", NEW_MANIFEST)
+        self.assertIn("docs/new.txt", NEW_MANIFEST)
+        self.assertIn("docs/unchanged.txt", NEW_MANIFEST)
+        self.assertIn("docs/fail.txt", NEW_MANIFEST)
 
 
 if __name__ == "__main__":

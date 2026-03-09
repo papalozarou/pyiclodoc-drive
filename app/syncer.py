@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import os
 
 from app.icloud_client import ICloudDriveClient, RemoteEntry
 
@@ -31,6 +33,16 @@ class SyncResult:
     transferred_files: int
     skipped_files: int
     error_files: int
+
+
+# ------------------------------------------------------------------------------
+# This function derives automatic transfer worker count from host CPU capacity.
+#
+# Returns: Bounded worker count for concurrent file download tasks.
+# ------------------------------------------------------------------------------
+def get_auto_worker_count() -> int:
+    CPU_COUNT = os.cpu_count() or 1
+    return min(max(CPU_COUNT, 1), 8)
 
 
 # ------------------------------------------------------------------------------
@@ -200,6 +212,7 @@ def perform_incremental_sync(
 
     ensure_directories(OUTPUT_DIR, DIRECTORIES)
     NEW_MANIFEST: dict[str, dict[str, Any]] = {}
+    TRANSFER_CANDIDATES: list[RemoteEntry] = []
 
     TRANSFERRED = 0
     SKIPPED = 0
@@ -207,18 +220,34 @@ def perform_incremental_sync(
 
     for ENTRY in FILES:
         SHOULD_TRANSFER = needs_transfer(ENTRY, MANIFEST)
-        SUCCESS = transfer_if_required(CLIENT, OUTPUT_DIR, ENTRY, SHOULD_TRANSFER)
-
-        if SHOULD_TRANSFER and SUCCESS:
-            TRANSFERRED += 1
-
-        if SHOULD_TRANSFER and not SUCCESS:
-            ERRORS += 1
-
-        if not SHOULD_TRANSFER:
+        if SHOULD_TRANSFER:
+            TRANSFER_CANDIDATES.append(ENTRY)
+        else:
             SKIPPED += 1
 
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)
+
+    if TRANSFER_CANDIDATES:
+        WORKER_COUNT = get_auto_worker_count()
+
+        with ThreadPoolExecutor(max_workers=WORKER_COUNT) as EXECUTOR:
+            FUTURES = {
+                EXECUTOR.submit(transfer_if_required, CLIENT, OUTPUT_DIR, ENTRY, True): ENTRY
+                for ENTRY in TRANSFER_CANDIDATES
+            }
+
+            for FUTURE in as_completed(FUTURES):
+                try:
+                    SUCCESS = FUTURE.result()
+                except Exception:
+                    ERRORS += 1
+                    continue
+
+                if SUCCESS:
+                    TRANSFERRED += 1
+                    continue
+
+                ERRORS += 1
 
     for ENTRY in DIRECTORIES:
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)

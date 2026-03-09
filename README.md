@@ -10,6 +10,7 @@ The example Compose setup runs two isolated worker services, one for Alice and o
 - Required `microcheck`-backed health checks with heartbeat age validation.
 - Runtime user and group mapping via container `PUID` and `PGID`.
 - Incremental sync model backed by `/config/manifest.json`.
+- Automatic host-based transfer concurrency tuning for changed-file downloads.
 - Session persistence in `/config/session` and cookies in `/config/cookies`.
 - Compatibility symlinks in `/config/icloudpd/{cookies,session}`.
 - First-run safety net to detect risky local permission mismatches.
@@ -52,7 +53,6 @@ The Compose example uses:
 
 ### Service-scoped variables (`ALICE_*`, `BOB_*`)
 
-- `<SVC>_CONTAINER_USERNAME`, command prefix and runtime username.
 - `<SVC>_CONFIG_PATH`, host path mounted to `/config`.
 - `<SVC>_OUTPUT_PATH`, host path mounted to `/output`.
 - `<SVC>_LOGS_PATH`, host path mounted to `/logs`.
@@ -145,6 +145,9 @@ docker inspect --format='{{json .State.Health}}' icloud_bob
 - In one-shot mode, the container exits after a single backup attempt.
 - One-shot exits non-zero if authentication is incomplete, reauthentication is
   pending, or the first-run safety net blocks backup.
+- Changed-file downloads run in parallel using an automatic worker count
+  derived from host CPU capacity and bounded internally to `1..8`.
+- No extra tuning variables are required for transfer concurrency.
 
 ## First-run authentication behaviour
 
@@ -158,7 +161,7 @@ incomplete.
 The password secret file passed by `<SVC>_ICLOUD_PASSWORD_FILE` can contain an
 Apple Account password or an app-specific password. The value is passed
 directly to `pyicloud`, and MFA handling continues to follow Apple account
-requirements.
+requirements and policy.
 
 To complete MFA, send one of:
 
