@@ -32,8 +32,9 @@ docker inspect --format='{{json .State.Health}}' icloud_bob
 
 ## Read this next
 
-- [CONFIGURATION.md](CONFIGURATION.md): env variables, schedules, and data
-  paths.
+- [CONFIGURATION.md](CONFIGURATION.md): env variables, paths, and config layout.
+- [SCHEDULING.md](SCHEDULING.md): schedule modes, compatibility, and manual
+  backup behaviour.
 - [TELEGRAM.md](TELEGRAM.md): command format, auth flow, and message outputs.
-- [OPERATIONS.md](OPERATIONS.md): runtime behaviour, one-shot mode, scheduling
-  details, and safety-net behaviour.
+- [OPERATIONS.md](OPERATIONS.md): runtime behaviour, one-shot mode,
+  performance, and safety-net behaviour.
