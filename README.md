@@ -1,10 +1,8 @@
 # iCloud Drive Backup Container
 
-This project provides an Alpine-based Docker container that performs
-incremental iCloud Drive backups with Telegram-driven control and
-authentication prompts. The example Compose setup runs two isolated worker
-services, one for Alice and one for Bob, with separate state, output, and log
-paths.
+This project provides an Alpine-based Docker container that performs incremental iCloud Drive backups with Telegram-driven control and authentication prompts.
+
+The example Compose setup runs two isolated worker services, one for Alice and one for Bob, with separate state, output, and log paths.
 
 ## Features
 
@@ -58,12 +56,19 @@ The Compose example uses:
 - `<SVC>_CONFIG_PATH`, host path mounted to `/config`.
 - `<SVC>_OUTPUT_PATH`, host path mounted to `/output`.
 - `<SVC>_LOGS_PATH`, host path mounted to `/logs`.
-- `<SVC>_BACKUP_INTERVAL_MINUTES`, scheduled backup interval.
-- `<SVC>_STARTUP_DELAY_SECONDS`, startup delay to spread API load.
-- `<SVC>_REAUTH_INTERVAL_DAYS`, reauthentication window length.
-- `<SVC>_TELEGRAM_BOT_TOKEN_FILE`, bot token secret path.
+- `<SVC>_BACKUP_INTERVAL_MINUTES`, scheduled backup interval in minutes
+  (default `1440`).
+- `<SVC>_RUN_ONCE`, run one backup pass and exit when set to `true`
+  (default `false`).
+- `<SVC>_STARTUP_DELAY_SECONDS`, startup delay to spread API load
+  (defaults: Alice `15`, Bob `60`).
+- `<SVC>_REAUTH_INTERVAL_DAYS`, reauthentication window length
+  (default `30`).
+- `<SVC>_TGM_BOT_TOKEN_FILE`, bot token secret path.
 - `<SVC>_ICLOUD_EMAIL_FILE`, iCloud email secret path.
 - `<SVC>_ICLOUD_PASSWORD_FILE`, iCloud password secret path.
+  This value can point to either an Apple Account password or an
+  app-specific password.
 
 ### Build variables
 
@@ -135,6 +140,11 @@ docker inspect --format='{{json .State.Health}}' icloud_bob
 - Compose `init: true` is required by the provided service definitions.
 - Health checks require `microcheck`, bundled into the image build.
 - Telegram commands are ignored unless they come from `H_TGM_CHAT_ID`.
+- One-shot mode is enabled per service with `<SVC>_RUN_ONCE=true`.
+- For one-shot runs, use `restart: "no"` to avoid automatic restarts.
+- In one-shot mode, the container exits after a single backup attempt.
+- One-shot exits non-zero if authentication is incomplete, reauthentication is
+  pending, or the first-run safety net blocks backup.
 
 ## First-run authentication behaviour
 
@@ -144,6 +154,11 @@ configured credentials and persisted session/cookie state under `/config`.
 If authentication requires MFA, the worker sends a Telegram prompt and marks
 authentication as pending. Backups are skipped while authentication is
 incomplete.
+
+The password secret file passed by `<SVC>_ICLOUD_PASSWORD_FILE` can contain an
+Apple Account password or an app-specific password. The value is passed
+directly to `pyicloud`, and MFA handling continues to follow Apple account
+requirements.
 
 To complete MFA, send one of:
 

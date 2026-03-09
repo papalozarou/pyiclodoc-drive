@@ -37,6 +37,11 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
     if not CONFIG.icloud_password:
         ERRORS.append("ICLOUD_PASSWORD is required.")
 
+    if not CONFIG.run_once and CONFIG.backup_interval_minutes < 1:
+        ERRORS.append(
+            "BACKUP_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false."
+        )
+
     return ERRORS
 
 
@@ -354,7 +359,7 @@ def handle_command(
 # ------------------------------------------------------------------------------
 # This function is the worker entrypoint used by the container launcher.
 #
-# Returns: Non-zero on startup validation failure; otherwise runs indefinitely.
+# Returns: Non-zero on startup validation/runtime failure.
 # ------------------------------------------------------------------------------
 def main() -> int:
     CONFIG = load_config()
@@ -398,6 +403,21 @@ def main() -> int:
         "",
     )
     log_line(LOG_FILE, "info", DETAILS)
+
+    if CONFIG.run_once:
+        if not IS_AUTHENTICATED:
+            notify(TELEGRAM, "One-shot backup skipped because authentication is incomplete.")
+            return 2
+
+        if AUTH_STATE.reauth_pending:
+            notify(TELEGRAM, "One-shot backup skipped because reauthentication is pending.")
+            return 3
+
+        if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
+            return 4
+
+        run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
+        return 0
 
     BACKUP_REQUESTED = False
     NEXT_UPDATE_OFFSET: int | None = None

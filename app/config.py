@@ -20,6 +20,7 @@ class AppConfig:
     telegram_bot_token: str
     telegram_chat_id: str
     keychain_service_name: str
+    run_once: bool
     backup_interval_minutes: int
     startup_delay_seconds: int
     reauth_interval_days: int
@@ -65,6 +66,26 @@ def env_int(NAME: str, DEFAULT: int) -> int:
 
 
 # ------------------------------------------------------------------------------
+# This function parses an environment variable as a boolean.
+#
+# 1. "NAME" is the environment key.
+# 2. "DEFAULT" is used when the value is unset or unrecognised.
+#
+# The function returns parsed boolean intent from common true/false tokens.
+# ------------------------------------------------------------------------------
+def env_bool(NAME: str, DEFAULT: bool) -> bool:
+    RAW_VALUE = env_value(NAME).lower()
+
+    if RAW_VALUE in {"1", "true", "yes", "on"}:
+        return True
+
+    if RAW_VALUE in {"0", "false", "no", "off"}:
+        return False
+
+    return DEFAULT
+
+
+# ------------------------------------------------------------------------------
 # This function ensures a directory exists before the worker starts.
 #
 # 1. "PATH" is the directory path to create when missing.
@@ -98,7 +119,8 @@ def load_config() -> AppConfig:
         telegram_bot_token=env_value("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=env_value("TELEGRAM_CHAT_ID"),
         keychain_service_name=env_value("KEYCHAIN_SERVICE_NAME", "icloud-drive-backup"),
-        backup_interval_minutes=env_int("BACKUP_INTERVAL_MINUTES", 720),
+        run_once=env_bool("RUN_ONCE", False),
+        backup_interval_minutes=env_int("BACKUP_INTERVAL_MINUTES", 1440),
         startup_delay_seconds=env_int("STARTUP_DELAY_SECONDS", 0),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),
         output_dir=OUTPUT_DIR,
