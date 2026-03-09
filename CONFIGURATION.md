@@ -44,22 +44,24 @@ These are usually left as-is unless you have a specific reason to change them.
 - `<SVC>_SCHEDULE_MODE`: `interval`, `daily_time`, `weekly`, `twice_weekly`,
   or `monthly` (default `interval`).
 - `<SVC>_BACKUP_INTERVAL_MINUTES`: interval run spacing in minutes (default
-  `1440`). Used when schedule mode is `interval`.
-- `<SVC>_BACKUP_DAILY_TIME`: pinned local run time in `HH:MM` 24-hour format
-  (default `02:00`). Used by `daily_time`, `weekly`, `twice_weekly`, and
-  `monthly` modes.
-- `<SVC>_SCHEDULE_WEEKDAY`: single weekday name (`monday`..`sunday`), used by
-  `weekly` and `monthly` modes.
-- `<SVC>_SCHEDULE_WEEKDAYS`: two comma-separated distinct weekday names, used
-  by `twice_weekly` mode, for example `monday,thursday`.
-- `<SVC>_SCHEDULE_MONTHLY_WEEK`: monthly ordinal used with
-  `<SVC>_SCHEDULE_WEEKDAY`, one of: `first`, `second`, `third`, `fourth`,
+  `1440`).
+- `<SVC>_BACKUP_DAILY_TIME`: local run time in `HH:MM` 24-hour format
+  (default `02:00`).
+- `<SVC>_SCHEDULE_WEEKDAY`: single weekday name (`monday`..`sunday`).
+- `<SVC>_SCHEDULE_WEEKDAYS`: two comma-separated distinct weekday names,
+  for example `monday,thursday`.
+- `<SVC>_SCHEDULE_MONTHLY_WEEK`: one of `first`, `second`, `third`, `fourth`,
   `last`.
 - `<SVC>_RUN_ONCE`: run one backup pass and exit (`true`/`false`, default
   `false`).
 - `<SVC>_STARTUP_DELAY_SECONDS`: startup delay to spread API load (defaults:
   Alice `15`, Bob `60`).
 - `<SVC>_REAUTH_INTERVAL_DAYS`: reauthentication window (default `30`).
+
+N.B.
+
+For scheduling compatibility and mode-specific behaviour, see
+[SCHEDULING.md](SCHEDULING.md).
 
 ## Build variable
 
