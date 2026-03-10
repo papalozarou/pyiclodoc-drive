@@ -340,6 +340,10 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertEqual(NOTIFY.call_count, 2)
             self.assertGreaterEqual(LOG_LINE.call_count, 1)
             self.assertEqual(LOG_LINE.call_args_list[-1].args[1], "info")
+            self.assertEqual(LOG_LINE.call_args_list[0].args[1], "debug")
+            self.assertIn("Loaded manifest entries:", LOG_LINE.call_args_list[0].args[2])
+            self.assertEqual(LOG_LINE.call_args_list[1].args[1], "debug")
+            self.assertIn("Sync summary detail:", LOG_LINE.call_args_list[1].args[2])
 
 # --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.
@@ -591,6 +595,33 @@ class TestMainEntrypoint(unittest.TestCase):
             self.assertEqual(RESULT, 0)
             WAIT_AUTH.assert_called_once()
             RUN_BACKUP.assert_called_once()
+
+# --------------------------------------------------------------------------
+# This test confirms startup emits auth-state debug diagnostics.
+# --------------------------------------------------------------------------
+    def test_main_logs_startup_auth_state_debug_line(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", True, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, False, "mfa")):
+                                            with patch("app.main.wait_for_one_shot_auth", return_value=(STATE, False)):
+                                                with patch("app.main.notify"):
+                                                    with patch("app.main.log_line") as LOG_LINE:
+                                                        __import__("app.main", fromlist=["main"]).main()
+
+            DEBUG_LINES = [CALL for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
+            self.assertGreaterEqual(len(DEBUG_LINES), 1)
+            self.assertTrue(
+                any("Auth state after startup attempt:" in CALL.args[2] for CALL in DEBUG_LINES)
+            )
 
 # --------------------------------------------------------------------------
 # This test confirms loop sleeps and continues when not due and no request.

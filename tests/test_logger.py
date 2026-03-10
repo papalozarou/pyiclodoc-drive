@@ -123,6 +123,33 @@ class TestLogger(unittest.TestCase):
             PRINT.assert_not_called()
             self.assertFalse(LOG_FILE.exists())
 
+# --------------------------------------------------------------------------
+# This test confirms get_log_level falls back to info on invalid values.
+# --------------------------------------------------------------------------
+    def test_get_log_level_fallbacks(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(logger.get_log_level(), "info")
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "DEBUG"}):
+            self.assertEqual(logger.get_log_level(), "debug")
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "garbage"}):
+            self.assertEqual(logger.get_log_level(), "info")
+
+# --------------------------------------------------------------------------
+# This test confirms should_log threshold decisions across levels.
+# --------------------------------------------------------------------------
+    def test_should_log_threshold_behaviour(self) -> None:
+        with patch.dict("os.environ", {"LOG_LEVEL": "info"}):
+            self.assertFalse(logger.should_log("debug"))
+            self.assertTrue(logger.should_log("info"))
+            self.assertTrue(logger.should_log("error"))
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "debug"}):
+            self.assertTrue(logger.should_log("debug"))
+            self.assertTrue(logger.should_log("info"))
+            self.assertTrue(logger.should_log("error"))
+
 
 if __name__ == "__main__":
     unittest.main()
