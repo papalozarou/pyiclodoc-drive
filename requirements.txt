@@ -2,7 +2,7 @@
 # This dependency file defines the Python packages required by the worker.
 # ------------------------------------------------------------------------------
 
-pyicloud==2.1.0
+pyicloud==2.3.0
 requests==2.32.3
 python-dateutil==2.9.0.post0
 keyring==25.6.0

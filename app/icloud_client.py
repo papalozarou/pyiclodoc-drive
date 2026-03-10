@@ -100,6 +100,37 @@ class ICloudDriveClient:
         LINK_PATH.symlink_to(TARGET_PATH, target_is_directory=True)
 
 # --------------------------------------------------------------------------
+# This function creates a pyicloud client with constructor compatibility
+# across library versions.
+#
+# Returns: Initialised "PyiCloudService" instance.
+# --------------------------------------------------------------------------
+    def _create_service(self) -> PyiCloudService:
+        SERVICE_KWARGS = {
+            "cookie_directory": str(self.config.cookie_dir),
+            "session_directory": str(self.config.session_dir),
+        }
+
+        try:
+            return PyiCloudService(
+                self.config.icloud_email,
+                self.config.icloud_password,
+                **SERVICE_KWARGS,
+            )
+        except TypeError as ERROR:
+            ERROR_TEXT = str(ERROR)
+
+            if "session_directory" not in ERROR_TEXT:
+                raise
+
+            SERVICE_KWARGS.pop("session_directory", None)
+            return PyiCloudService(
+                self.config.icloud_email,
+                self.config.icloud_password,
+                **SERVICE_KWARGS,
+            )
+
+# --------------------------------------------------------------------------
 # This function authenticates with iCloud and completes MFA using a
 # callback-supplied code.
 #
@@ -113,13 +144,7 @@ class ICloudDriveClient:
 # --------------------------------------------------------------------------
     def authenticate(self, CODE_PROVIDER: Callable[[], str]) -> tuple[bool, str]:
         self.prepare_compat_paths()
-
-        self.api = PyiCloudService(
-            self.config.icloud_email,
-            self.config.icloud_password,
-            cookie_directory=str(self.config.cookie_dir),
-            session_directory=str(self.config.session_dir),
-        )
+        self.api = self._create_service()
 
         if self.api.requires_2fa:
             return self._handle_2fa(CODE_PROVIDER)
