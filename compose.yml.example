@@ -13,6 +13,8 @@ name: iclouddd-docker
 x-env:
   &default-env
   TZ: ${H_TZ}
+  PUID: ${C_UID}
+  PGID: ${C_GID}
 
 # ------------------------------------------------------------------------------
 # Docker extension fields for default security options that disallow privilege
@@ -22,8 +24,29 @@ x-security:
   &default-security
   cap_drop:
     - ALL
+  cap_add:
+    - SETUID
+    - SETGID
   security_opt:
     - no-new-privileges:true
+
+# ------------------------------------------------------------------------------
+# Define secret-file mappings consumed by worker services.
+#
+# Each secret maps to a local file path under "./secrets".
+# Services reference these by secret name under their "secrets" key.
+# ------------------------------------------------------------------------------
+secrets:
+  telegram_bot_token:
+    file: ${H_DKR_SECRETS}/telegram_bot_token.txt
+  alice_icloud_email:
+    file: ${H_DKR_SECRETS}/alice_icloud_email.txt
+  alice_icloud_password:
+    file: ${H_DKR_SECRETS}/alice_icloud_password.txt
+  bob_icloud_email:
+    file: ${H_DKR_SECRETS}/bob_icloud_email.txt
+  bob_icloud_password:
+    file: ${H_DKR_SECRETS}/bob_icloud_password.txt
 
 # ------------------------------------------------------------------------------
 # Define backup worker services.
@@ -46,7 +69,10 @@ services:
         ALP_VER: "${ALP_VER}"
         MCK_VER: "${MCK_VER}"
     init: true
-    user: "${C_UID}:${C_GID}"
+    secrets:
+      - telegram_bot_token
+      - alice_icloud_email
+      - alice_icloud_password
     environment:
       <<: *default-env
       CONTAINER_USERNAME: "alice"
@@ -65,9 +91,6 @@ services:
       - ${ALICE_CONFIG_PATH}:/config
       - ${ALICE_OUTPUT_PATH}:/output
       - ${ALICE_LOGS_PATH}:/logs
-      - ${H_DKR_SECRETS}/telegram_bot_token.txt:${C_DKR_SECRETS}/telegram_bot_token:ro
-      - ${H_DKR_SECRETS}/alice_icloud_email.txt:${C_DKR_SECRETS}/alice_icloud_email:ro
-      - ${H_DKR_SECRETS}/alice_icloud_password.txt:${C_DKR_SECRETS}/alice_icloud_password:ro
     <<: *default-security
     restart: unless-stopped
 
@@ -84,7 +107,10 @@ services:
         ALP_VER: "${ALP_VER}"
         MCK_VER: "${MCK_VER}"
     init: true
-    user: "${C_UID}:${C_GID}"
+    secrets:
+      - telegram_bot_token
+      - bob_icloud_email
+      - bob_icloud_password
     environment:
       <<: *default-env
       CONTAINER_USERNAME: "bob"
@@ -103,8 +129,5 @@ services:
       - ${BOB_CONFIG_PATH}:/config
       - ${BOB_OUTPUT_PATH}:/output
       - ${BOB_LOGS_PATH}:/logs
-      - ${H_DKR_SECRETS}/telegram_bot_token.txt:${C_DKR_SECRETS}/telegram_bot_token:ro
-      - ${H_DKR_SECRETS}/bob_icloud_email.txt:${C_DKR_SECRETS}/bob_icloud_email:ro
-      - ${H_DKR_SECRETS}/bob_icloud_password.txt:${C_DKR_SECRETS}/bob_icloud_password:ro
     <<: *default-security
     restart: unless-stopped

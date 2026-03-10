@@ -16,8 +16,6 @@ with separate config, output, and logs.
    `telegram_bot_token.txt`, `alice_icloud_email.txt`,
    `alice_icloud_password.txt`, `bob_icloud_email.txt`,
    `bob_icloud_password.txt`.
-   These files are bind-mounted read-only to `${C_DKR_SECRETS}` and must be
-   readable by `C_UID:C_GID`.
 5. Start containers:
 
 ```bash

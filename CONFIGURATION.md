@@ -26,14 +26,14 @@ These are usually left as-is unless you need explicit UID or GID mapping.
 
 - `C_UID`: source UID value in `.env` (normally mirrors `H_UID`).
 - `C_GID`: source GID value in `.env` (normally mirrors `H_GID`).
-- Compose runs each service as `C_UID:C_GID` from startup.
+- Compose maps `PUID=${C_UID}` and `PGID=${C_GID}` into each service.
+- Entrypoint drops from root to `PUID:PGID` before starting the worker.
 
 ## Shared container variables (`C_`)
 
 These are usually left as-is unless you have a specific reason to change them.
 
-- `C_DKR_SECRETS`: in-container secret root used by `_FILE` env vars and
-  bind-mounted secret files.
+- `C_DKR_SECRETS`: in-container secret root used by `_FILE` env vars.
 
 ## Service variables (`ALICE_*`, `BOB_*`)
 
@@ -45,12 +45,6 @@ These are usually left as-is unless you have a specific reason to change them.
 - `<SVC>_TGM_BOT_TOKEN_FILE`: Telegram bot token file path.
 - `<SVC>_ICLOUD_EMAIL_FILE`: iCloud email file path.
 - `<SVC>_ICLOUD_PASSWORD_FILE`: iCloud password file path.
-
-N.B.
-
-Secret files are mounted read-only from `H_DKR_SECRETS` into
-`${C_DKR_SECRETS}`. Ensure host file ownership and mode allow read access for
-`C_UID:C_GID`.
 
 ### Scheduling and runtime behaviour
 

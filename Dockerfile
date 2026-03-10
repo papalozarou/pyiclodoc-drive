@@ -73,11 +73,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 1. "python3" provides the interpreter used by installed dependencies.
 # 2. "ca-certificates" supports secure outbound HTTPS requests.
 # 3. "tzdata" ensures timezone-aware behaviour when required.
+# 4. "su-exec" drops privileges after secrets are resolved as root.
 # ------------------------------------------------------------------------------
 RUN apk add --no-cache \
     python3 \
     ca-certificates \
-    tzdata
+    tzdata \
+    su-exec
 
 # ------------------------------------------------------------------------------
 # Set the application working directory for all following instructions.
