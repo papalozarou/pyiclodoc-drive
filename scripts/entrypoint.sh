@@ -54,7 +54,6 @@ configureUser() {
   adduser -u "$PUID" -S -D -h "/home/$CONTAINER_USERNAME" -G "$CONTAINER_USERNAME" "$CONTAINER_USERNAME" >/dev/null 2>&1 || true
 
   mkdir -p /config /output /logs "/home/$CONTAINER_USERNAME"
-  chown -R "$PUID:$PGID" /config /output /logs "/home/$CONTAINER_USERNAME"
 }
 
 readSecretVar ICLOUD_EMAIL
