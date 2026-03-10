@@ -24,8 +24,10 @@ Start here first.
 
 These are usually left as-is unless you have a specific reason to change them.
 
-- `C_UID`: container user ID (normally mirrors `H_UID`).
-- `C_GID`: container group ID (normally mirrors `H_GID`).
+- `C_UID`: runtime worker user ID after entrypoint privilege drop
+  (normally mirrors `H_UID`).
+- `C_GID`: runtime worker group ID after entrypoint privilege drop
+  (normally mirrors `H_GID`).
 - `C_DKR_SECRETS`: in-container secret root used by `_FILE` env vars.
 
 ## Service variables (`ALICE_*`, `BOB_*`)

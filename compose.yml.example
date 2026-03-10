@@ -12,7 +12,9 @@ name: iclouddd-docker
 # ------------------------------------------------------------------------------
 x-env:
   &default-env
-  TZ: ${H_TZ}  
+  TZ: ${H_TZ}
+  C_UID: ${C_UID}
+  C_GID: ${C_GID}
 
 # ------------------------------------------------------------------------------
 # Docker extension fields for default security options that disallow privilege
@@ -22,6 +24,9 @@ x-security:
   &default-security
   cap_drop:
     - ALL
+  cap_add:
+    - SETUID
+    - SETGID
   security_opt:
     - no-new-privileges:true
 
@@ -68,7 +73,6 @@ services:
       - telegram_bot_token
       - alice_icloud_email
       - alice_icloud_password
-    user: "${C_UID}:${C_GID}"
     environment:
       <<: *default-env
       CONTAINER_USERNAME: "alice"
@@ -97,7 +101,6 @@ services:
   icloud_bob:
     image: "${IMG_NAME}:alpine-${ALP_VER}"
     container_name: icloud_bob
-    user: "${C_UID}:${C_GID}"
     build:
       context: .
       args:
@@ -108,7 +111,6 @@ services:
       - telegram_bot_token
       - bob_icloud_email
       - bob_icloud_password
-    user: "${C_UID}:${C_GID}"
     environment:
       <<: *default-env
       CONTAINER_USERNAME: "bob"
