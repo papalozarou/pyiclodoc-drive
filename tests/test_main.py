@@ -22,7 +22,7 @@ from app.main import (
     calculate_next_twice_weekly_run_epoch,
     calculate_next_weekly_run_epoch,
     get_monthly_weekday_day,
-    parse_daily_time,
+    parse_daily,
     parse_weekday,
     parse_weekday_list,
     process_reauth_reminders,
@@ -53,10 +53,10 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         keychain_service_name="icloud-drive-backup",
         run_once=False,
         schedule_mode="interval",
-        backup_daily_time="02:00",
+        backup_time="02:00",
         schedule_weekdays="monday,thursday",
         schedule_monthly_week="first",
-        backup_interval_minutes=1440,
+        schedule_interval_minutes=1440,
         reauth_interval_days=30,
         output_dir=Path("/tmp/output"),
         config_dir=Path("/tmp/config"),
@@ -138,12 +138,12 @@ class TestMainValidation(unittest.TestCase):
 # This test confirms regular mode requires interval values of at least one.
 # --------------------------------------------------------------------------
     def test_validate_config_rejects_zero_interval_when_not_run_once(self) -> None:
-        CONFIG = build_config(run_once=False, backup_interval_minutes=0)
+        CONFIG = build_config(run_once=False, schedule_interval_minutes=0)
 
         ERRORS = validate_config(CONFIG)
 
         self.assertIn(
-            "BACKUP_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false.",
+            "SCHEDULE_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false.",
             ERRORS,
         )
 
@@ -151,7 +151,7 @@ class TestMainValidation(unittest.TestCase):
 # This test confirms one-shot mode permits zero-interval values.
 # --------------------------------------------------------------------------
     def test_validate_config_allows_zero_interval_when_run_once(self) -> None:
-        CONFIG = build_config(run_once=True, backup_interval_minutes=0)
+        CONFIG = build_config(run_once=True, schedule_interval_minutes=0)
 
         ERRORS = validate_config(CONFIG)
 
@@ -166,19 +166,19 @@ class TestMainValidation(unittest.TestCase):
         ERRORS = validate_config(CONFIG)
 
         self.assertIn(
-            "SCHEDULE_MODE must be one of: interval, daily_time, weekly, twice_weekly, monthly.",
+            "SCHEDULE_MODE must be one of: interval, daily, weekly, twice_weekly, monthly.",
             ERRORS,
         )
 
 # --------------------------------------------------------------------------
 # This test confirms invalid daily-time values are rejected in daily mode.
 # --------------------------------------------------------------------------
-    def test_validate_config_rejects_invalid_daily_time(self) -> None:
-        CONFIG = build_config(schedule_mode="daily_time", backup_daily_time="25:61")
+    def test_validate_config_rejects_invalid_daily(self) -> None:
+        CONFIG = build_config(schedule_mode="daily", backup_time="25:61")
 
         ERRORS = validate_config(CONFIG)
 
-        self.assertIn("BACKUP_DAILY_TIME must use 24-hour HH:MM format.", ERRORS)
+        self.assertIn("BACKUP_TIME must use 24-hour HH:MM format.", ERRORS)
 
 # --------------------------------------------------------------------------
 # This test confirms daily mode does not require interval minimum.
@@ -186,9 +186,9 @@ class TestMainValidation(unittest.TestCase):
     def test_validate_config_allows_zero_interval_in_daily_mode(self) -> None:
         CONFIG = build_config(
             run_once=False,
-            schedule_mode="daily_time",
-            backup_daily_time="02:00",
-            backup_interval_minutes=0,
+            schedule_mode="daily",
+            backup_time="02:00",
+            schedule_interval_minutes=0,
         )
 
         ERRORS = validate_config(CONFIG)
@@ -263,14 +263,14 @@ class TestMainDailySchedule(unittest.TestCase):
 # --------------------------------------------------------------------------
 # This test confirms "HH:MM" parsing accepts valid 24-hour values.
 # --------------------------------------------------------------------------
-    def test_parse_daily_time_valid(self) -> None:
-        self.assertEqual(parse_daily_time("02:30"), (2, 30))
+    def test_parse_daily_valid(self) -> None:
+        self.assertEqual(parse_daily("02:30"), (2, 30))
 
 # --------------------------------------------------------------------------
 # This test confirms invalid daily-time text is rejected.
 # --------------------------------------------------------------------------
-    def test_parse_daily_time_invalid(self) -> None:
-        self.assertIsNone(parse_daily_time("2pm"))
+    def test_parse_daily_invalid(self) -> None:
+        self.assertIsNone(parse_daily("2pm"))
 
 # --------------------------------------------------------------------------
 # This test confirms weekday parsing handles valid and invalid values.

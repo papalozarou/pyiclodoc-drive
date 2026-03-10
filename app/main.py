@@ -57,13 +57,13 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
     if not CONFIG.icloud_password:
         ERRORS.append("ICLOUD_PASSWORD is required.")
 
-    if CONFIG.schedule_mode not in {"interval", "daily_time", "weekly", "twice_weekly", "monthly"}:
+    if CONFIG.schedule_mode not in {"interval", "daily", "weekly", "twice_weekly", "monthly"}:
         ERRORS.append(
-            "SCHEDULE_MODE must be one of: interval, daily_time, weekly, twice_weekly, monthly."
+            "SCHEDULE_MODE must be one of: interval, daily, weekly, twice_weekly, monthly."
         )
 
-    if CONFIG.schedule_mode == "daily_time" and parse_daily_time(CONFIG.backup_daily_time) is None:
-        ERRORS.append("BACKUP_DAILY_TIME must use 24-hour HH:MM format.")
+    if CONFIG.schedule_mode == "daily" and parse_daily(CONFIG.backup_time) is None:
+        ERRORS.append("BACKUP_TIME must use 24-hour HH:MM format.")
 
     if (
         CONFIG.schedule_mode == "weekly"
@@ -88,16 +88,16 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
         if CONFIG.schedule_monthly_week not in MONTHLY_WEEK_MAP:
             ERRORS.append("SCHEDULE_MONTHLY_WEEK must be one of: first, second, third, fourth, last.")
 
-        if parse_daily_time(CONFIG.backup_daily_time) is None:
-            ERRORS.append("BACKUP_DAILY_TIME must use 24-hour HH:MM format.")
+        if parse_daily(CONFIG.backup_time) is None:
+            ERRORS.append("BACKUP_TIME must use 24-hour HH:MM format.")
 
     if (
         CONFIG.schedule_mode == "interval"
         and not CONFIG.run_once
-        and CONFIG.backup_interval_minutes < 1
+        and CONFIG.schedule_interval_minutes < 1
     ):
         ERRORS.append(
-            "BACKUP_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false."
+            "SCHEDULE_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false."
         )
 
     return ERRORS
@@ -127,7 +127,7 @@ def parse_iso(VALUE: str) -> datetime:
 #
 # Returns: Tuple "(hour, minute)" when valid; otherwise None.
 # ------------------------------------------------------------------------------
-def parse_daily_time(VALUE: str) -> tuple[int, int] | None:
+def parse_daily(VALUE: str) -> tuple[int, int] | None:
     PARTS = VALUE.strip().split(":")
 
     if len(PARTS) != 2:
@@ -197,7 +197,7 @@ def parse_weekday_list(VALUE: str, EXPECTED_COUNT: int) -> list[int] | None:
 # Returns: Epoch seconds for next scheduled run time.
 # ------------------------------------------------------------------------------
 def calculate_next_daily_run_epoch(NOW_LOCAL: datetime, DAILY_TIME: str) -> int:
-    PARSED = parse_daily_time(DAILY_TIME)
+    PARSED = parse_daily(DAILY_TIME)
 
     if PARSED is None:
         return int(NOW_LOCAL.timestamp())
@@ -225,7 +225,7 @@ def calculate_next_weekly_run_epoch(
     WEEKDAY_TEXT: str,
     DAILY_TIME: str,
 ) -> int:
-    TIME_PARTS = parse_daily_time(DAILY_TIME)
+    TIME_PARTS = parse_daily(DAILY_TIME)
     WEEKDAY = parse_weekday(WEEKDAY_TEXT)
 
     if TIME_PARTS is None or WEEKDAY is None:
@@ -340,7 +340,7 @@ def calculate_next_monthly_run_epoch(
     MONTHLY_WEEK_TEXT: str,
     DAILY_TIME: str,
 ) -> int:
-    TIME_PARTS = parse_daily_time(DAILY_TIME)
+    TIME_PARTS = parse_daily(DAILY_TIME)
     WEEKDAY = parse_weekday(WEEKDAY_TEXT)
 
     if TIME_PARTS is None or WEEKDAY is None:
@@ -381,8 +381,8 @@ def calculate_next_monthly_run_epoch(
 # Returns: Epoch seconds for next scheduled backup execution.
 # ------------------------------------------------------------------------------
 def get_next_run_epoch(CONFIG: AppConfig, NOW_EPOCH: int) -> int:
-    if CONFIG.schedule_mode == "daily_time":
-        return calculate_next_daily_run_epoch(now_local(), CONFIG.backup_daily_time)
+    if CONFIG.schedule_mode == "daily":
+        return calculate_next_daily_run_epoch(now_local(), CONFIG.backup_time)
 
     if CONFIG.schedule_mode == "weekly":
         WEEKDAYS = parse_weekday_list(CONFIG.schedule_weekdays, 1)
@@ -393,14 +393,14 @@ def get_next_run_epoch(CONFIG: AppConfig, NOW_EPOCH: int) -> int:
         return calculate_next_weekly_run_epoch(
             now_local(),
             WEEKDAY_NAME_BY_INDEX[WEEKDAYS[0]],
-            CONFIG.backup_daily_time,
+            CONFIG.backup_time,
         )
 
     if CONFIG.schedule_mode == "twice_weekly":
         return calculate_next_twice_weekly_run_epoch(
             now_local(),
             CONFIG.schedule_weekdays,
-            CONFIG.backup_daily_time,
+            CONFIG.backup_time,
         )
 
     if CONFIG.schedule_mode == "monthly":
@@ -413,10 +413,10 @@ def get_next_run_epoch(CONFIG: AppConfig, NOW_EPOCH: int) -> int:
             now_local(),
             WEEKDAY_NAME_BY_INDEX[WEEKDAYS[0]],
             CONFIG.schedule_monthly_week,
-            CONFIG.backup_daily_time,
+            CONFIG.backup_time,
         )
 
-    return NOW_EPOCH + (CONFIG.backup_interval_minutes * 60)
+    return NOW_EPOCH + (CONFIG.schedule_interval_minutes * 60)
 
 
 # ------------------------------------------------------------------------------

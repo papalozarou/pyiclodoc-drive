@@ -22,10 +22,10 @@ class AppConfig:
     keychain_service_name: str
     run_once: bool
     schedule_mode: str
-    backup_daily_time: str
+    backup_time: str
     schedule_weekdays: str
     schedule_monthly_week: str
-    backup_interval_minutes: int
+    schedule_interval_minutes: int
     reauth_interval_days: int
     output_dir: Path
     config_dir: Path
@@ -124,10 +124,10 @@ def load_config() -> AppConfig:
         keychain_service_name=env_value("KEYCHAIN_SERVICE_NAME", "icloud-drive-backup"),
         run_once=env_bool("RUN_ONCE", False),
         schedule_mode=env_value("SCHEDULE_MODE", "interval").lower(),
-        backup_daily_time=env_value("BACKUP_DAILY_TIME", "02:00"),
+        backup_time=env_value("BACKUP_TIME", "02:00"),
         schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
-        backup_interval_minutes=env_int("BACKUP_INTERVAL_MINUTES", 1440),
+        schedule_interval_minutes=env_int("SCHEDULE_INTERVAL_MINUTES", 1440),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,

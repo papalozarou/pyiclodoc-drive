@@ -41,11 +41,11 @@ These are usually left as-is unless you have a specific reason to change them.
 
 ### Scheduling and runtime behaviour
 
-- `<SVC>_SCHEDULE_MODE`: `interval`, `daily_time`, `weekly`, `twice_weekly`,
+- `<SVC>_SCHEDULE_MODE`: `interval`, `daily`, `weekly`, `twice_weekly`,
   or `monthly` (default `interval`).
-- `<SVC>_BACKUP_INTERVAL_MINUTES`: interval run spacing in minutes (default
+- `<SVC>_SCHEDULE_INTERVAL_MINUTES`: interval run spacing in minutes (default
   `1440`).
-- `<SVC>_BACKUP_DAILY_TIME`: local run time in `HH:MM` 24-hour format
+- `<SVC>_BACKUP_TIME`: local run time in `HH:MM` 24-hour format
   (default `02:00`).
 - `<SVC>_SCHEDULE_WEEKDAYS`: comma-separated weekday names.
   Use one day for `weekly` mode, or two distinct days for `twice_weekly`

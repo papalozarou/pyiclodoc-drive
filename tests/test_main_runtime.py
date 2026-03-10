@@ -51,10 +51,10 @@ def build_config_for_runtime(TMPDIR: str) -> AppConfig:
         keychain_service_name="icloud-drive-backup",
         run_once=False,
         schedule_mode="interval",
-        backup_daily_time="02:00",
+        backup_time="02:00",
         schedule_weekdays="monday",
         schedule_monthly_week="first",
-        backup_interval_minutes=60,
+        schedule_interval_minutes=60,
         reauth_interval_days=30,
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,
@@ -535,7 +535,7 @@ class TestMainEntrypoint(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_main_loop_sleeps_when_not_due(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"schedule_mode": "daily_time"}))
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"schedule_mode": "daily"}))
             STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
 
             with patch("app.main.load_config", return_value=CONFIG):
