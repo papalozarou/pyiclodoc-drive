@@ -35,6 +35,54 @@ one-shot mode.
   `<SVC>_BACKUP_TIME`.
 - Example: `first monday` at `02:00`.
 
+## Example values
+
+Use lowercase weekday names: `monday` to `sunday`.
+
+### Interval
+
+```env
+ALICE_SCHEDULE_MODE=interval
+ALICE_SCHEDULE_INTERVAL_MINUTES=1440
+```
+
+### Daily
+
+```env
+ALICE_SCHEDULE_MODE=daily
+ALICE_BACKUP_TIME=02:00
+```
+
+### Weekly
+
+```env
+ALICE_SCHEDULE_MODE=weekly
+ALICE_SCHEDULE_WEEKDAYS=monday
+ALICE_BACKUP_TIME=02:00
+```
+
+### Twice-weekly
+
+```env
+ALICE_SCHEDULE_MODE=twice_weekly
+ALICE_SCHEDULE_WEEKDAYS=monday,thursday
+ALICE_BACKUP_TIME=02:00
+```
+
+N.B.
+
+- Use exactly two days, comma-separated.
+- Do not repeat the same day twice.
+
+### Monthly
+
+```env
+ALICE_SCHEDULE_MODE=monthly
+ALICE_SCHEDULE_MONTHLY_WEEK=first
+ALICE_SCHEDULE_WEEKDAYS=monday
+ALICE_BACKUP_TIME=02:00
+```
+
 ## Which options work together
 
 - `RUN_ONCE=true`
