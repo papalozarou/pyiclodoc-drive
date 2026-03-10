@@ -64,6 +64,11 @@ These are usually left as-is unless you have a specific reason to change them.
   `false`).
 - `<SVC>_REAUTH_INTERVAL_DAYS`: reauthentication window (default `30`).
 
+## Logging
+
+- `LOG_LEVEL`: global worker log verbosity from Compose `default-env`.
+  Supported values are `info` and `debug`; default is `info`.
+
 N.B.
 
 For scheduling compatibility and mode-specific behaviour, see

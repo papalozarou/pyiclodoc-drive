@@ -221,6 +221,11 @@ class ICloudDriveClient:
         DIRECTORY_INFO = self._node_dir(NODE)
         DIRS = DIRECTORY_INFO.get("dirs", [])
         FILES = DIRECTORY_INFO.get("files", [])
+        NAMES = DIRECTORY_INFO.get("names", [])
+
+        if isinstance(NAMES, list) and NAMES:
+            RESULT.extend(self._entries_from_names(NODE, CURRENT_PATH, NAMES))
+            return RESULT
 
         RESULT.extend(self._entries_from_directories(NODE, CURRENT_PATH, DIRS))
         RESULT.extend(self._entries_from_files(CURRENT_PATH, FILES))
@@ -238,7 +243,7 @@ class ICloudDriveClient:
         try:
             PAYLOAD = NODE.dir()
         except (AttributeError, TypeError, ValueError):
-            return {"dirs": [], "files": []}
+            return {"dirs": [], "files": [], "names": []}
 
         return self._normalise_dir_payload(PAYLOAD)
 
@@ -251,21 +256,26 @@ class ICloudDriveClient:
 # --------------------------------------------------------------------------
     def _normalise_dir_payload(self, PAYLOAD: Any) -> dict[str, Any]:
         if isinstance(PAYLOAD, list):
+            if all(isinstance(ITEM, str) for ITEM in PAYLOAD):
+                return {"dirs": [], "files": [], "names": PAYLOAD}
+
             return self._normalise_items_payload(PAYLOAD)
 
         if not isinstance(PAYLOAD, dict):
-            return {"dirs": [], "files": []}
+            return {"dirs": [], "files": [], "names": []}
 
         if isinstance(PAYLOAD.get("dirs"), list) and isinstance(PAYLOAD.get("files"), list):
             return {
                 "dirs": PAYLOAD.get("dirs", []),
                 "files": PAYLOAD.get("files", []),
+                "names": [],
             }
 
         if isinstance(PAYLOAD.get("folders"), list) and isinstance(PAYLOAD.get("files"), list):
             return {
                 "dirs": PAYLOAD.get("folders", []),
                 "files": PAYLOAD.get("files", []),
+                "names": [],
             }
 
         for KEY in ("items", "children", "entries", "contents"):
@@ -274,7 +284,7 @@ class ICloudDriveClient:
             if isinstance(ITEMS, list):
                 return self._normalise_items_payload(ITEMS)
 
-        return {"dirs": [], "files": []}
+        return {"dirs": [], "files": [], "names": []}
 
 # --------------------------------------------------------------------------
 # This function splits mixed item payloads into canonical directories/files.
@@ -304,7 +314,119 @@ class ICloudDriveClient:
 
             FILES.append(ITEM)
 
-        return {"dirs": DIRS, "files": FILES}
+        return {"dirs": DIRS, "files": FILES, "names": []}
+
+# --------------------------------------------------------------------------
+# This function builds entries from child-name payloads using child nodes.
+#
+# 1. "NODE" is current drive node.
+# 2. "CURRENT_PATH" is current relative path.
+# 3. "NAMES" is list of child names from pyicloud.
+#
+# Returns: Remote entries discovered from child nodes.
+# --------------------------------------------------------------------------
+    def _entries_from_names(
+        self,
+        NODE: Any,
+        CURRENT_PATH: str,
+        NAMES: list[str],
+    ) -> list[RemoteEntry]:
+        RESULT: list[RemoteEntry] = []
+
+        for NAME in NAMES:
+            CLEAN_NAME = str(NAME).strip()
+
+            if not CLEAN_NAME:
+                continue
+
+            CHILD = self._child_node(NODE, CLEAN_NAME)
+
+            if CHILD is None:
+                continue
+
+            RELATIVE_PATH = f"{CURRENT_PATH}/{CLEAN_NAME}".strip("/")
+            IS_DIR = self._child_is_dir(CHILD)
+
+            if IS_DIR:
+                RESULT.append(
+                    RemoteEntry(
+                        path=RELATIVE_PATH,
+                        is_dir=True,
+                        size=0,
+                        modified=self._child_modified(CHILD),
+                    )
+                )
+                RESULT.extend(self._walk_node(CHILD, RELATIVE_PATH))
+                continue
+
+            RESULT.append(
+                RemoteEntry(
+                    path=RELATIVE_PATH,
+                    is_dir=False,
+                    size=self._child_size(CHILD),
+                    modified=self._child_modified(CHILD),
+                )
+            )
+
+        return RESULT
+
+# --------------------------------------------------------------------------
+# This function infers whether a child node is a directory.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: True for directories, otherwise False.
+# --------------------------------------------------------------------------
+    def _child_is_dir(self, CHILD: Any) -> bool:
+        CHILD_TYPE = str(getattr(CHILD, "type", "")).lower()
+
+        if CHILD_TYPE in {"folder", "directory", "dir"}:
+            return True
+
+        if bool(getattr(CHILD, "is_folder", False)):
+            return True
+
+        if bool(getattr(CHILD, "isFolder", False)):
+            return True
+
+        try:
+            PAYLOAD = CHILD.dir()
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+        return isinstance(PAYLOAD, (dict, list))
+
+# --------------------------------------------------------------------------
+# This function extracts child modified timestamp as a string.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: Modified timestamp string, or empty string.
+# --------------------------------------------------------------------------
+    def _child_modified(self, CHILD: Any) -> str:
+        VALUE = getattr(CHILD, "date_modified", "")
+
+        if VALUE:
+            return str(VALUE)
+
+        return ""
+
+# --------------------------------------------------------------------------
+# This function extracts child file size with integer fallback.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: Non-negative file size.
+# --------------------------------------------------------------------------
+    def _child_size(self, CHILD: Any) -> int:
+        RAW_VALUE = getattr(CHILD, "size", 0)
+
+        try:
+            VALUE = int(RAW_VALUE)
+        except (TypeError, ValueError):
+            return 0
+
+        return VALUE if VALUE >= 0 else 0
 
 # --------------------------------------------------------------------------
 # This function converts directory items to entries and recursively

@@ -15,6 +15,7 @@ x-env:
   TZ: ${H_TZ}
   PUID: ${C_UID}
   PGID: ${C_GID}
+  LOG_LEVEL: info
 
 # ------------------------------------------------------------------------------
 # Docker extension fields for default security options that disallow privilege

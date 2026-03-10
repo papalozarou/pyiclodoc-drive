@@ -338,7 +338,8 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 
             SAVE_MANIFEST.assert_called_once()
             self.assertEqual(NOTIFY.call_count, 2)
-            LOG_LINE.assert_called_once()
+            self.assertGreaterEqual(LOG_LINE.call_count, 1)
+            self.assertEqual(LOG_LINE.call_args_list[-1].args[1], "info")
 
 # --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.

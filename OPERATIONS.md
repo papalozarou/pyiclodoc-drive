@@ -9,6 +9,8 @@
   `PUID:PGID` before launching the worker process.
 - Services keep `cap_drop: ALL` and add only `SETUID` and `SETGID` so
   privilege drop works.
+- Set `LOG_LEVEL=debug` in Compose `default-env` for verbose runtime
+  diagnostics.
 
 ## Privilege model
 

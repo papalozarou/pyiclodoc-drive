@@ -72,6 +72,22 @@ class FakeNode(dict):
 
 
 # ------------------------------------------------------------------------------
+# This fake drive node emulates pyicloud child node attributes.
+# ------------------------------------------------------------------------------
+class FakeDriveChild:
+    def __init__(self, NODE_TYPE: str, SIZE: int = 0, MODIFIED: str = ""):
+        self.type = NODE_TYPE
+        self.size = SIZE
+        self.date_modified = MODIFIED
+
+    def dir(self):
+        if self.type == "folder":
+            return []
+
+        raise AttributeError("file node has no dir()")
+
+
+# ------------------------------------------------------------------------------
 # These tests validate iCloud client compatibility-path behaviour.
 # ------------------------------------------------------------------------------
 class TestICloudClientCompat(unittest.TestCase):
@@ -234,6 +250,28 @@ class TestICloudClientTraversal(unittest.TestCase):
             PATHS = sorted(ENTRY.path for ENTRY in ENTRIES)
             self.assertEqual(PATHS, ["docs", "docs/inner.txt", "root.txt"])
 
+    def test_list_entries_supports_name_list_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+
+            DOCS_NODE = FakeNode(
+                ["inner.txt"],
+                {"inner.txt": FakeDriveChild("file", SIZE=3, MODIFIED="d2")},
+            )
+            ROOT_NODE = FakeNode(
+                ["docs", "root.txt"],
+                {
+                    "docs": DOCS_NODE,
+                    "root.txt": FakeDriveChild("file", SIZE=2, MODIFIED="d0"),
+                },
+            )
+            CLIENT.api = Mock(drive=ROOT_NODE)
+
+            ENTRIES = CLIENT.list_entries()
+            PATHS = sorted(ENTRY.path for ENTRY in ENTRIES)
+            self.assertEqual(PATHS, ["docs", "docs/inner.txt", "root.txt"])
+
     def test_node_dir_and_child_node_error_paths(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
@@ -241,7 +279,7 @@ class TestICloudClientTraversal(unittest.TestCase):
 
             BROKEN_NODE = Mock()
             BROKEN_NODE.dir.side_effect = ValueError("bad")
-            self.assertEqual(CLIENT._node_dir(BROKEN_NODE), {"dirs": [], "files": []})
+            self.assertEqual(CLIENT._node_dir(BROKEN_NODE), {"dirs": [], "files": [], "names": []})
             self.assertIsNone(CLIENT._child_node({}, "missing"))
 
     def test_node_dir_supports_folders_and_files_payload(self) -> None:

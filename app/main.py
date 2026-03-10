@@ -647,9 +647,20 @@ def run_backup(
     LOG_FILE: Path,
 ) -> None:
     MANIFEST = load_manifest(CONFIG.manifest_path)
+    log_line(LOG_FILE, "debug", f"Loaded manifest entries: {len(MANIFEST)}")
     notify(TELEGRAM, "Backup starting.")
 
     SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, CONFIG.output_dir, MANIFEST)
+    log_line(
+        LOG_FILE,
+        "debug",
+        "Sync summary detail: "
+        f"total={SUMMARY.total_files}, "
+        f"transferred={SUMMARY.transferred_files}, "
+        f"skipped={SUMMARY.skipped_files}, "
+        f"errors={SUMMARY.error_files}, "
+        f"manifest_entries={len(NEW_MANIFEST)}",
+    )
     save_manifest(CONFIG.manifest_path, NEW_MANIFEST)
 
     MESSAGE = (
@@ -817,6 +828,14 @@ def main() -> int:
         "",
     )
     log_line(LOG_FILE, "info", DETAILS)
+    log_line(
+        LOG_FILE,
+        "debug",
+        "Auth state after startup attempt: "
+        f"is_authenticated={IS_AUTHENTICATED}, "
+        f"auth_pending={AUTH_STATE.auth_pending}, "
+        f"reauth_pending={AUTH_STATE.reauth_pending}",
+    )
 
     if CONFIG.run_once:
         if not IS_AUTHENTICATED or AUTH_STATE.reauth_pending:
