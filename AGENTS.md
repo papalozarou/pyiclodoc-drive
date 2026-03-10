@@ -27,6 +27,24 @@ This file defines various coding standards for agents to adhere to.
 - MUST: Ensure a README.md exists
 - MUST: Match the writing style from available examples in my [GitHub repository](https://github.com/papalozarou) and [blog](https://lozworld.com)
 - MUST: If available examples are insufficient to infer style confidently, ask for a sample before large edits
+- MUST: Write documentation in plain, practical UK English
+- MUST: Prefer direct, operational wording over formal, academic, or marketing language
+- MUST: Use short, explicit sentences and avoid fluff
+- MUST: Lead documentation with a quick-start path before linking to deeper reference material
+- SHOULD: Split large documents into focused companion files once a single README.md becomes unwieldy
+- MUST: Ensure each document answers one clear job well
+- MUST: Use conversational but technical prose; mild personality is fine, but waffle is not
+- MUST NOT: Use AI-generic phrasing such as vague claims about being "robust", "scalable", or "streamlined"
+- MUST: Define behaviour with explicit rules covering what happens, when it happens, and what happens next
+- MUST: Include concrete examples for schedule or time-based behaviour
+- MUST: For command documentation, include exact accepted input formats and exact output text where relevant
+- MUST: Use one term consistently for the same concept across related documentation
+- MUST: Keep headings action-oriented and predictable where practical (for example `Quick start`, `Configuration`, `Operations`)
+- MUST: Keep bullet grammar consistent within each section
+- SHOULD: Use `N.B.` blocks for non-obvious caveats and gotchas
+- MUST: Keep caveats short, concrete, and free from defensive over-explanation
+- MUST: Before finalising documentation, run a style pass for brevity, UK spelling, consistency, and ambiguity
+- MUST: If behaviour changes in code, document old versus new behaviour where confusion is likely
 - MUST: Use the same syntax and formatting for comments as in my other GitHub projects
 - MUST: Write verbose, highly structured, comments that would enable debugging at 2am
 - SHOULD: Add source links for non-obvious logic (for example Stack Overflow or official documentation)
