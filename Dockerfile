@@ -90,7 +90,7 @@ WORKDIR /app
 # Copy runtime assets from previous build stages.
 # ------------------------------------------------------------------------------
 COPY --from=python-deps /opt/venv /opt/venv
-COPY --from=microcheck /usr/local/bin/microcheck /usr/local/bin/microcheck
+COPY --from=microcheck /bin/microcheck /bin/microcheck
 
 # ------------------------------------------------------------------------------
 # Copy worker application source code and operational scripts into the image.
@@ -103,7 +103,7 @@ COPY scripts/healthcheck.sh /app/scripts/healthcheck.sh
 # ------------------------------------------------------------------------------
 # Mark startup scripts as executable so entrypoint and launcher can run.
 # ------------------------------------------------------------------------------
-RUN chmod +x /app/scripts/entrypoint.sh /app/scripts/start.sh /usr/local/bin/microcheck
+RUN chmod +x /app/scripts/entrypoint.sh /app/scripts/start.sh /bin/microcheck
 
 # ------------------------------------------------------------------------------
 # Declare persistent mount points used by Compose volume bindings.
