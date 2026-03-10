@@ -19,7 +19,8 @@ The Docker container must:
 - accept a TZ environment variable to be used by the container;
 - allow incremental backup as efficiently as possible;
 - allow for multiple containers in the same compose project;
-- allow for a delayed start to containers, to avoid flooding the API when running multiple containers in a project;
+- ~allow for a delayed start to containers, to avoid flooding the API when running multiple containers in a project;~
+- allow one shot, weekly, twice weekly and monthly scheduling;
 - allow passing docker secrets for a user's iCloud email and password;
 - use an iCloud app specific password (preferred) or a user's iCloud account password to authenticate alongside multi-factor authentication;
 - allow Telegram notifications of backups starting and finishing, including number of files transferred out of the total number of files in the drive;
@@ -29,7 +30,7 @@ The Docker container must:
 - allow a user to trigger a one-off incremental backup using "<username> backup", where username matches the username within the container;
 - implement a performant safety net, that stops backups, for users running this over the top of a backup created using something like mandarons/icloud-docker, such that permissions of the existing downloaded files – though likely not checking all files – are checked before starting a full backup to overwrite existing files;
 - ensure the safety net is only applied on first run and that the safety net tells the user explicitly the permissions that would match existing files, via Telegram and in the container logs; and
-- if possible, use https://github.com/tarampampam/microcheck?cmdf=microcheck+docker as a healthcheck.
+- use a utility from https://github.com/tarampampam/microcheck as the healthcheck.
 
 ## Authentication
 
