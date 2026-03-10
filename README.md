@@ -30,6 +30,21 @@ docker inspect --format='{{json .State.Health}}' icloud_alice
 docker inspect --format='{{json .State.Health}}' icloud_bob
 ```
 
+## Testing
+
+Run the unit test suite:
+
+```bash
+python3 -m unittest -q
+```
+
+Run tests with coverage:
+
+```bash
+python3 -m coverage run -m unittest -q
+python3 -m coverage report -m
+```
+
 ## Read this next
 
 - [CONFIGURATION.md](CONFIGURATION.md): env variables, paths, and config layout.
