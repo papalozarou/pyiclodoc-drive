@@ -10,6 +10,7 @@
 # Pin Alpine image tag and digest for reproducible builds.
 # ------------------------------------------------------------------------------
 ARG ALP_VER
+ARG MCK_VER=1.3.0
 ARG ALPINE_IMAGE=alpine:${ALP_VER}
 
 FROM ${ALPINE_IMAGE} AS python-deps
@@ -40,7 +41,6 @@ RUN python3 -m venv /opt/venv && \
 # N.B.
 # Pinning "MCK_VER" makes the build reproducible across environments.
 # ------------------------------------------------------------------------------
-ARG MCK_VER=v1.0.1
 FROM ghcr.io/tarampampam/microcheck:${MCK_VER} AS microcheck
 
 # ------------------------------------------------------------------------------
