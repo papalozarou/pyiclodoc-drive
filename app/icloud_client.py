@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import inspect
 from pathlib import Path
 from typing import Callable, Any
 import shutil
@@ -111,27 +110,11 @@ class ICloudDriveClient:
             "cookie_directory": str(self.config.cookie_dir),
         }
 
-        if self._supports_session_directory():
-            SERVICE_KWARGS["session_directory"] = str(self.config.session_dir)
-
         return PyiCloudService(
             self.config.icloud_email,
             self.config.icloud_password,
             **SERVICE_KWARGS,
         )
-
-# --------------------------------------------------------------------------
-# This function checks whether pyicloud supports "session_directory".
-#
-# Returns: True when the constructor supports "session_directory".
-# --------------------------------------------------------------------------
-    def _supports_session_directory(self) -> bool:
-        try:
-            PARAMETERS = inspect.signature(PyiCloudService.__init__).parameters
-        except (TypeError, ValueError):
-            return False
-
-        return "session_directory" in PARAMETERS
 
 # --------------------------------------------------------------------------
 # This function starts an iCloud authentication attempt.
@@ -177,7 +160,11 @@ class ICloudDriveClient:
         if self.api.is_trusted_session:
             return True, "Authenticated successfully with 2FA."
 
-        self.api.trust_session()
+        IS_TRUSTED = self.api.trust_session()
+
+        if not IS_TRUSTED:
+            return False, "Two-factor code was accepted, but Apple did not trust this session."
+
         return True, "Authenticated successfully with trusted 2FA session."
 
 # --------------------------------------------------------------------------
@@ -248,7 +235,11 @@ class ICloudDriveClient:
         except (AttributeError, NotADirectoryError, TypeError, ValueError):
             return {"dirs": [], "files": [], "names": []}
 
-        return self._normalise_dir_payload(PAYLOAD)
+        if not isinstance(PAYLOAD, list):
+            return {"dirs": [], "files": [], "names": []}
+
+        NAMES = [str(ITEM).strip() for ITEM in PAYLOAD if str(ITEM).strip()]
+        return {"dirs": [], "files": [], "names": NAMES}
 
 # --------------------------------------------------------------------------
 # This function normalises pyicloud directory payload variants.
@@ -594,10 +585,6 @@ class ICloudDriveClient:
         LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            if hasattr(FILE_OBJ, "download"):
-                RESPONSE = FILE_OBJ.download()
-                return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
-
             if not hasattr(FILE_OBJ, "open"):
                 return False
 
