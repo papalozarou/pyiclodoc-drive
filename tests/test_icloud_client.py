@@ -118,33 +118,14 @@ class TestICloudClientCompat(unittest.TestCase):
 # These tests validate authentication and 2FA handling branches.
 # ------------------------------------------------------------------------------
 class TestICloudClientAuth(unittest.TestCase):
-    def test_create_service_uses_cookie_and_session_directories(self) -> None:
+    def test_create_service_uses_cookie_directory_only(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
             API = Mock()
 
-            with patch.object(CLIENT, "_supports_session_directory", return_value=True):
-                with patch("app.icloud_client.PyiCloudService", return_value=API) as SERVICE:
-                    RESULT = CLIENT._create_service()
-
-            self.assertIs(RESULT, API)
-            SERVICE.assert_called_once_with(
-                CONFIG.icloud_email,
-                CONFIG.icloud_password,
-                cookie_directory=str(CONFIG.cookie_dir),
-                session_directory=str(CONFIG.session_dir),
-            )
-
-    def test_create_service_omits_session_directory_when_unsupported(self) -> None:
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = build_config_for_icloud(TMPDIR)
-            CLIENT = ICloudDriveClient(CONFIG)
-            API = Mock()
-
-            with patch.object(CLIENT, "_supports_session_directory", return_value=False):
-                with patch("app.icloud_client.PyiCloudService", return_value=API) as SERVICE:
-                    RESULT = CLIENT._create_service()
+            with patch("app.icloud_client.PyiCloudService", return_value=API) as SERVICE:
+                RESULT = CLIENT._create_service()
 
             self.assertIs(RESULT, API)
             SERVICE.assert_called_once_with(
@@ -152,24 +133,6 @@ class TestICloudClientAuth(unittest.TestCase):
                 CONFIG.icloud_password,
                 cookie_directory=str(CONFIG.cookie_dir),
             )
-
-    def test_supports_session_directory_true_when_constructor_has_parameter(self) -> None:
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = build_config_for_icloud(TMPDIR)
-            CLIENT = ICloudDriveClient(CONFIG)
-
-            SIGNATURE = SimpleNamespace(parameters={"self": object(), "session_directory": object()})
-
-            with patch("app.icloud_client.inspect.signature", return_value=SIGNATURE):
-                self.assertTrue(CLIENT._supports_session_directory())
-
-    def test_supports_session_directory_false_when_signature_is_unavailable(self) -> None:
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = build_config_for_icloud(TMPDIR)
-            CLIENT = ICloudDriveClient(CONFIG)
-
-            with patch("app.icloud_client.inspect.signature", side_effect=ValueError("no signature")):
-                self.assertFalse(CLIENT._supports_session_directory())
 
     def test_authenticate_success_without_2fa(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
@@ -224,11 +187,23 @@ class TestICloudClientAuth(unittest.TestCase):
             )
 
             API.is_trusted_session = False
+            API.trust_session.return_value = True
             self.assertEqual(
                 CLIENT.complete_authentication("123456"),
                 (True, "Authenticated successfully with trusted 2FA session."),
             )
             API.trust_session.assert_called()
+
+            API.trust_session.reset_mock()
+            API.trust_session.return_value = False
+            self.assertEqual(
+                CLIENT.complete_authentication("123456"),
+                (
+                    False,
+                    "Two-factor code was accepted, but Apple did not trust this session.",
+                ),
+            )
+            API.trust_session.assert_called_once()
 
 
 # ------------------------------------------------------------------------------
@@ -246,13 +221,16 @@ class TestICloudClientTraversal(unittest.TestCase):
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
 
-            CHILD_NODE = FakeNode({"dirs": [], "files": [{"name": "inner.txt", "size": 3, "dateModified": "d2"}]})
+            CHILD_NODE = FakeNode(
+                ["inner.txt"],
+                {"inner.txt": FakeDriveChild("file", SIZE=3, MODIFIED="d2")},
+            )
             ROOT_NODE = FakeNode(
+                ["docs", "root.txt"],
                 {
-                    "dirs": [{"name": "docs", "dateModified": "d1"}],
-                    "files": [{"name": "root.txt", "size": 2, "dateModified": "d0"}],
+                    "docs": CHILD_NODE,
+                    "root.txt": FakeDriveChild("file", SIZE=2, MODIFIED="d0"),
                 },
-                {"docs": CHILD_NODE},
             )
             CLIENT.api = Mock(drive=ROOT_NODE)
 
@@ -296,73 +274,27 @@ class TestICloudClientTraversal(unittest.TestCase):
             FILE_CHILD.dir.side_effect = NotADirectoryError("file.bin")
             self.assertFalse(CLIENT._child_is_dir(FILE_CHILD))
 
-    def test_node_dir_supports_folders_and_files_payload(self) -> None:
+    def test_node_dir_returns_names_for_list_payload(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            NODE = FakeNode(
-                {
-                    "folders": [{"name": "docs", "dateModified": "d1"}],
-                    "files": [{"name": "a.txt", "size": 1, "dateModified": "d2"}],
-                }
-            )
+            NODE = FakeNode(["docs", "a.txt"])
 
             RESULT = CLIENT._node_dir(NODE)
 
-            self.assertEqual(len(RESULT["dirs"]), 1)
-            self.assertEqual(len(RESULT["files"]), 1)
+            self.assertEqual(RESULT["names"], ["docs", "a.txt"])
+            self.assertEqual(RESULT["dirs"], [])
+            self.assertEqual(RESULT["files"], [])
 
-    def test_node_dir_supports_items_payload(self) -> None:
+    def test_node_dir_rejects_non_list_payload(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            NODE = FakeNode(
-                {
-                    "items": [
-                        {"name": "docs", "type": "folder", "dateModified": "d1"},
-                        {"name": "b.txt", "type": "file", "size": 2, "dateModified": "d2"},
-                    ]
-                }
-            )
+            NODE = FakeNode({"items": [{"name": "docs"}]})
 
             RESULT = CLIENT._node_dir(NODE)
 
-            self.assertEqual(len(RESULT["dirs"]), 1)
-            self.assertEqual(len(RESULT["files"]), 1)
-
-    def test_node_dir_supports_list_payload(self) -> None:
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = build_config_for_icloud(TMPDIR)
-            CLIENT = ICloudDriveClient(CONFIG)
-            NODE = FakeNode(
-                [
-                    {"name": "docs", "type": "folder", "dateModified": "d1"},
-                    {"name": "c.txt", "type": "file", "size": 3, "dateModified": "d2"},
-                ]
-            )
-
-            RESULT = CLIENT._node_dir(NODE)
-
-            self.assertEqual(len(RESULT["dirs"]), 1)
-            self.assertEqual(len(RESULT["files"]), 1)
-
-    def test_node_dir_supports_children_payload(self) -> None:
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            CONFIG = build_config_for_icloud(TMPDIR)
-            CLIENT = ICloudDriveClient(CONFIG)
-            NODE = FakeNode(
-                {
-                    "children": [
-                        {"filename": "docs", "type": "folder", "modified": "d1"},
-                        {"filename": "d.txt", "type": "file", "bytes": 4, "modified": "d2"},
-                    ]
-                }
-            )
-
-            RESULT = CLIENT._node_dir(NODE)
-
-            self.assertEqual(len(RESULT["dirs"]), 1)
-            self.assertEqual(len(RESULT["files"]), 1)
+            self.assertEqual(RESULT, {"dirs": [], "files": [], "names": []})
 
     def test_entries_from_files_supports_filename_and_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
@@ -406,10 +338,10 @@ class TestICloudClientDownloads(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            FILE_NODE = Mock()
+            FILE_NODE = SimpleNamespace()
             RESPONSE = Mock()
             RESPONSE.iter_content.return_value = [b"abc", b"", b"def"]
-            FILE_NODE.download.return_value = RESPONSE
+            FILE_NODE.open = Mock(return_value=RESPONSE)
 
             CLIENT.api = Mock()
             with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
@@ -423,9 +355,9 @@ class TestICloudClientDownloads(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            FILE_NODE = Mock()
+            FILE_NODE = SimpleNamespace()
             RESPONSE = SimpleNamespace(raw=BytesIO(b"raw-data"))
-            FILE_NODE.download.return_value = RESPONSE
+            FILE_NODE.open = Mock(return_value=RESPONSE)
 
             CLIENT.api = Mock()
             with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
@@ -435,12 +367,12 @@ class TestICloudClientDownloads(unittest.TestCase):
             self.assertTrue(RESULT)
             self.assertEqual(LOCAL_PATH.read_bytes(), b"raw-data")
 
-    def test_download_file_handles_download_errors(self) -> None:
+    def test_download_file_handles_open_errors(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            FILE_NODE = Mock()
-            FILE_NODE.download.side_effect = RuntimeError("boom")
+            FILE_NODE = SimpleNamespace()
+            FILE_NODE.open = Mock(side_effect=RuntimeError("boom"))
             CLIENT.api = Mock()
 
             with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
@@ -487,7 +419,7 @@ class TestICloudClientDownloads(unittest.TestCase):
             self.assertEqual(LOCAL_PATH.read_bytes(), b"from-open")
             RESPONSE.close.assert_called_once()
 
-    def test_download_file_fails_when_no_download_or_open_api_exists(self) -> None:
+    def test_download_file_fails_when_no_open_api_exists(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
