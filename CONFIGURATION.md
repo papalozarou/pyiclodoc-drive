@@ -70,6 +70,8 @@ These are usually left as-is unless you have a specific reason to change them.
 
 - `LOG_LEVEL`: global worker log verbosity from Compose `default-env`.
   Supported values are `info` and `debug`; default is `info`.
+  `debug` includes per-item sync traces such as directories ensured,
+  files queued/transferred, unchanged skips, and transfer failures.
 
 N.B.
 

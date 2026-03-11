@@ -222,16 +222,28 @@ class TestSyncerHelpers(unittest.TestCase):
         ENTRIES = [
             RemoteEntry("docs", True, 0, "2026-03-09T00:00:00Z"),
             RemoteEntry("docs/new.txt", False, 11, "2026-03-09T00:00:00Z"),
+            RemoteEntry("docs/unchanged.txt", False, 5, "2026-03-08T00:00:00Z"),
         ]
         CLIENT = FakeClient(ENTRIES, {"docs/new.txt": True})
+        MANIFEST = {
+            "docs/unchanged.txt": {
+                "is_dir": False,
+                "size": 5,
+                "modified": "2026-03-08T00:00:00Z",
+            }
+        }
 
         with tempfile.TemporaryDirectory() as TMPDIR:
             LOG_FILE = Path(TMPDIR) / "worker.log"
             with patch("app.syncer.log_line") as LOG_LINE:
-                perform_incremental_sync(CLIENT, Path(TMPDIR), {}, LOG_FILE)
+                perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST, LOG_FILE)
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
         self.assertTrue(any("Remote listing detail:" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any("Directory ensured: docs" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any("File queued for transfer: docs/new.txt" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any("File transferred: docs/new.txt" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any("File skipped unchanged: docs/unchanged.txt" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Transfer planning detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Transfer execution detail:" in LINE for LINE in DEBUG_LINES))
 

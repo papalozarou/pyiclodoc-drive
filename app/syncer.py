@@ -206,7 +206,7 @@ def perform_incremental_sync(
             f"entries={len(ENTRIES)}, files={len(FILES)}, directories={len(DIRECTORIES)}",
         )
 
-    ensure_directories(OUTPUT_DIR, DIRECTORIES)
+    ensure_directories(OUTPUT_DIR, DIRECTORIES, LOG_FILE)
     NEW_MANIFEST: dict[str, dict[str, Any]] = {}
     TRANSFER_CANDIDATES: list[RemoteEntry] = []
 
@@ -219,8 +219,20 @@ def perform_incremental_sync(
         SHOULD_TRANSFER = needs_transfer(ENTRY, MANIFEST)
         if SHOULD_TRANSFER:
             TRANSFER_CANDIDATES.append(ENTRY)
+            if LOG_FILE is not None:
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    f"File queued for transfer: {ENTRY.path} ({max(ENTRY.size, 0)} bytes)",
+                )
         else:
             SKIPPED += 1
+            if LOG_FILE is not None:
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    f"File skipped unchanged: {ENTRY.path}",
+                )
 
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)
 
@@ -252,6 +264,13 @@ def perform_incremental_sync(
                 try:
                     SUCCESS = FUTURE.result()
                 except Exception as ERROR:
+                    if LOG_FILE is not None:
+                        log_line(
+                            LOG_FILE,
+                            "debug",
+                            f"File transfer exception: {ENTRY.path} "
+                            f"({type(ERROR).__name__}: {ERROR})",
+                        )
                     print(
                         "File transfer worker failed: "
                         f"{type(ERROR).__name__}: {ERROR}",
@@ -263,9 +282,21 @@ def perform_incremental_sync(
                 if SUCCESS:
                     TRANSFERRED += 1
                     TRANSFERRED_BYTES += max(ENTRY.size, 0)
+                    if LOG_FILE is not None:
+                        log_line(
+                            LOG_FILE,
+                            "debug",
+                            f"File transferred: {ENTRY.path} ({max(ENTRY.size, 0)} bytes)",
+                        )
                     continue
 
                 ERRORS += 1
+                if LOG_FILE is not None:
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        f"File transfer failed: {ENTRY.path}",
+                    )
 
     for ENTRY in DIRECTORIES:
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)
@@ -287,10 +318,20 @@ def perform_incremental_sync(
 #
 # Returns: None.
 # ------------------------------------------------------------------------------
-def ensure_directories(OUTPUT_DIR: Path, DIRECTORIES: list[RemoteEntry]) -> None:
+def ensure_directories(
+    OUTPUT_DIR: Path,
+    DIRECTORIES: list[RemoteEntry],
+    LOG_FILE: Path | None = None,
+) -> None:
     for ENTRY in DIRECTORIES:
         LOCAL_PATH = OUTPUT_DIR / ENTRY.path
         LOCAL_PATH.mkdir(parents=True, exist_ok=True)
+        if LOG_FILE is not None:
+            log_line(
+                LOG_FILE,
+                "debug",
+                f"Directory ensured: {ENTRY.path}",
+            )
 
 
 # ------------------------------------------------------------------------------
