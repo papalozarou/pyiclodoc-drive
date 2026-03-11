@@ -594,11 +594,45 @@ class ICloudDriveClient:
         LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            RESPONSE = FILE_OBJ.download()
+            if hasattr(FILE_OBJ, "download"):
+                RESPONSE = FILE_OBJ.download()
+                return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+
+            if not hasattr(FILE_OBJ, "open"):
+                return False
+
+            OPEN_RESULT = FILE_OBJ.open(stream=True)
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
             return False
 
-        return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+        return self._write_open_result(OPEN_RESULT, LOCAL_PATH)
+
+# --------------------------------------------------------------------------
+# This function writes content from a file-open result and closes it when
+# required.
+#
+# 1. "OPEN_RESULT" is the object returned from "FILE_OBJ.open(stream=True)".
+# 2. "LOCAL_PATH" is filesystem destination.
+#
+# Returns: True on successful write, otherwise False.
+# --------------------------------------------------------------------------
+    def _write_open_result(self, OPEN_RESULT: Any, LOCAL_PATH: Path) -> bool:
+        if hasattr(OPEN_RESULT, "__enter__") and hasattr(OPEN_RESULT, "__exit__"):
+            with OPEN_RESULT as RESPONSE:
+                return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+
+        try:
+            RESULT = self._write_downloaded_content(OPEN_RESULT, LOCAL_PATH)
+        finally:
+            CLOSE_METHOD = getattr(OPEN_RESULT, "close", None)
+
+            if callable(CLOSE_METHOD):
+                try:
+                    CLOSE_METHOD()
+                except OSError:
+                    pass
+
+        return RESULT
 
 # --------------------------------------------------------------------------
 # This function resolves a file object from a slash-separated

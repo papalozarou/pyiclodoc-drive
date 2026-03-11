@@ -448,6 +448,57 @@ class TestICloudClientDownloads(unittest.TestCase):
 
             self.assertFalse(RESULT)
 
+    def test_download_file_success_with_open_stream_context_manager(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+
+            RESPONSE = Mock()
+            RESPONSE.iter_content.return_value = [b"a", b"b"]
+            CONTEXT = Mock()
+            CONTEXT.__enter__ = Mock(return_value=RESPONSE)
+            CONTEXT.__exit__ = Mock(return_value=None)
+
+            FILE_NODE = SimpleNamespace(open=Mock(return_value=CONTEXT))
+
+            CLIENT.api = Mock()
+            with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
+                LOCAL_PATH = Path(TMPDIR) / "downloads" / "ctx.bin"
+                RESULT = CLIENT.download_file("docs/ctx.bin", LOCAL_PATH)
+
+            self.assertTrue(RESULT)
+            self.assertEqual(LOCAL_PATH.read_bytes(), b"ab")
+            FILE_NODE.open.assert_called_once_with(stream=True)
+
+    def test_download_file_success_with_open_stream_closes_response(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+
+            RESPONSE = SimpleNamespace(raw=BytesIO(b"from-open"), close=Mock())
+            FILE_NODE = SimpleNamespace(open=Mock(return_value=RESPONSE))
+
+            CLIENT.api = Mock()
+            with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
+                LOCAL_PATH = Path(TMPDIR) / "downloads" / "open.bin"
+                RESULT = CLIENT.download_file("docs/open.bin", LOCAL_PATH)
+
+            self.assertTrue(RESULT)
+            self.assertEqual(LOCAL_PATH.read_bytes(), b"from-open")
+            RESPONSE.close.assert_called_once()
+
+    def test_download_file_fails_when_no_download_or_open_api_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            FILE_NODE = SimpleNamespace()
+            CLIENT.api = Mock()
+
+            with patch.object(CLIENT, "_resolve_file_object", return_value=FILE_NODE):
+                RESULT = CLIENT.download_file("docs/file.bin", Path(TMPDIR) / "file.bin")
+
+            self.assertFalse(RESULT)
+
     def test_write_downloaded_content_rejects_missing_raw(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
