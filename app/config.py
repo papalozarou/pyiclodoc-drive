@@ -26,6 +26,7 @@ class AppConfig:
     schedule_weekdays: str
     schedule_monthly_week: str
     schedule_interval_minutes: int
+    sync_workers: int
     reauth_interval_days: int
     output_dir: Path
     config_dir: Path
@@ -64,6 +65,28 @@ def env_int(NAME: str, DEFAULT: int) -> int:
 
     if RAW_VALUE.isdigit():
         return int(RAW_VALUE)
+
+    return DEFAULT
+
+
+# ------------------------------------------------------------------------------
+# This function parses transfer worker count with "auto" fallback support.
+#
+# 1. "NAME" is the environment key.
+# 2. "DEFAULT" is used when the value is unset or invalid.
+#
+# The function returns 0 for "auto" mode, otherwise a positive integer.
+# ------------------------------------------------------------------------------
+def env_workers(NAME: str, DEFAULT: int = 0) -> int:
+    RAW_VALUE = env_value(NAME, "auto").lower()
+
+    if RAW_VALUE in {"", "auto"}:
+        return DEFAULT
+
+    if RAW_VALUE.isdigit():
+        VALUE = int(RAW_VALUE)
+        if VALUE > 0:
+            return VALUE
 
     return DEFAULT
 
@@ -128,6 +151,7 @@ def load_config() -> AppConfig:
         schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
         schedule_interval_minutes=env_int("SCHEDULE_INTERVAL_MINUTES", 1440),
+        sync_workers=env_workers("SYNC_WORKERS", 0),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,

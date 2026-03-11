@@ -20,6 +20,7 @@ install_dependency_stubs()
 from app.syncer import (
     collect_mismatches,
     get_auto_worker_count,
+    get_transfer_worker_count,
     needs_transfer,
     perform_incremental_sync,
 )
@@ -155,6 +156,20 @@ class TestSyncerHelpers(unittest.TestCase):
             self.assertEqual(get_auto_worker_count(), 4)
 
 # --------------------------------------------------------------------------
+# This test confirms transfer worker override is bounded when configured.
+# --------------------------------------------------------------------------
+    def test_transfer_worker_count_uses_bounded_override(self) -> None:
+        self.assertEqual(get_transfer_worker_count(12), 12)
+        self.assertEqual(get_transfer_worker_count(64), 16)
+
+# --------------------------------------------------------------------------
+# This test confirms transfer worker count falls back to auto mode.
+# --------------------------------------------------------------------------
+    def test_transfer_worker_count_falls_back_to_auto(self) -> None:
+        with patch("app.syncer.get_auto_worker_count", return_value=5):
+            self.assertEqual(get_transfer_worker_count(0), 5)
+
+# --------------------------------------------------------------------------
 # This test confirms incremental sync reports transfer, skip, and error
 # counts correctly with mixed file outcomes.
 # --------------------------------------------------------------------------
@@ -236,7 +251,7 @@ class TestSyncerHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             LOG_FILE = Path(TMPDIR) / "worker.log"
             with patch("app.syncer.log_line") as LOG_LINE:
-                perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST, LOG_FILE)
+                perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST, 0, LOG_FILE)
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
         self.assertTrue(any("Traversal timing detail:" in LINE for LINE in DEBUG_LINES))

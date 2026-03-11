@@ -57,6 +57,7 @@ def build_config_for_runtime(TMPDIR: str) -> AppConfig:
         schedule_weekdays="monday",
         schedule_monthly_week="first",
         schedule_interval_minutes=60,
+        sync_workers=0,
         reauth_interval_days=30,
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,
@@ -370,7 +371,13 @@ class TestMainRuntimeHelpers(unittest.TestCase):
                                 run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
 
             SAVE_MANIFEST.assert_called_once()
-            SYNC.assert_called_once_with(CLIENT, CONFIG.output_dir, {"/a": {"etag": "1"}}, LOG_FILE)
+            SYNC.assert_called_once_with(
+                CLIENT,
+                CONFIG.output_dir,
+                {"/a": {"etag": "1"}},
+                CONFIG.sync_workers,
+                LOG_FILE,
+            )
             self.assertEqual(NOTIFY.call_count, 2)
             self.assertGreaterEqual(LOG_LINE.call_count, 1)
             self.assertEqual(LOG_LINE.call_args_list[-1].args[1], "info")

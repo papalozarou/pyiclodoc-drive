@@ -45,6 +45,7 @@ def build_config_for_icloud(TMPDIR: str) -> AppConfig:
         schedule_weekdays="monday",
         schedule_monthly_week="first",
         schedule_interval_minutes=60,
+        sync_workers=0,
         reauth_interval_days=30,
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,

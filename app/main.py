@@ -104,6 +104,9 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
             "SCHEDULE_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false."
         )
 
+    if CONFIG.sync_workers < 0 or CONFIG.sync_workers > 16:
+        ERRORS.append("SYNC_WORKERS must be auto or an integer between 1 and 16.")
+
     return ERRORS
 
 
@@ -812,6 +815,7 @@ def run_backup(
         CLIENT,
         CONFIG.output_dir,
         MANIFEST,
+        CONFIG.sync_workers,
         LOG_FILE,
     )
     log_line(
