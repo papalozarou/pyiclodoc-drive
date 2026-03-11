@@ -24,7 +24,9 @@ from app.main import (
     parse_iso,
     process_commands,
     run_backup,
+    start_heartbeat_updater,
     update_heartbeat,
+    wait_for_one_shot_auth,
 )
 from app.state import AuthState
 from app.telegram_bot import CommandEvent, TelegramConfig
@@ -123,6 +125,44 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertTrue(HEARTBEAT_PATH.exists())
 
 # --------------------------------------------------------------------------
+# This test confirms heartbeat updater starts a daemon thread and returns
+# a stop event.
+# --------------------------------------------------------------------------
+    def test_start_heartbeat_updater_starts_daemon_thread(self) -> None:
+        HEARTBEAT_PATH = Path("/tmp/heartbeat.txt")
+
+        with patch("app.main.threading.Thread") as THREAD:
+            THREAD_INSTANCE = Mock()
+            THREAD.return_value = THREAD_INSTANCE
+
+            STOP_EVENT = start_heartbeat_updater(HEARTBEAT_PATH)
+
+        THREAD.assert_called_once()
+        self.assertEqual(THREAD.call_args.kwargs.get("daemon"), True)
+        THREAD_INSTANCE.start.assert_called_once()
+        self.assertFalse(STOP_EVENT.is_set())
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot auth wait returns immediately when ready.
+# --------------------------------------------------------------------------
+    def test_wait_for_one_shot_auth_returns_immediately_when_authenticated(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+            TELEGRAM = TelegramConfig("token", "12345")
+
+            RESULT_STATE, RESULT_AUTH = wait_for_one_shot_auth(
+                CONFIG,
+                Mock(),
+                STATE,
+                True,
+                TELEGRAM,
+            )
+
+        self.assertEqual(RESULT_STATE, STATE)
+        self.assertTrue(RESULT_AUTH)
+
+# --------------------------------------------------------------------------
 # This test confirms notify delegates to send_message.
 # --------------------------------------------------------------------------
     def test_notify_delegates_to_send_message(self) -> None:
@@ -140,7 +180,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", True, True, "prompt2")
             CLIENT = Mock()
-            CLIENT.authenticate.return_value = (True, "ok")
+            CLIENT.complete_authentication.return_value = (True, "ok")
 
             with patch("app.main.now_iso", return_value="2026-03-10T10:00:00+00:00"):
                 with patch("app.main.notify") as NOTIFY:
@@ -158,6 +198,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertEqual(NEW_STATE.last_auth_utc, "2026-03-10T10:00:00+00:00")
             self.assertFalse(NEW_STATE.auth_pending)
             self.assertFalse(NEW_STATE.reauth_pending)
+            CLIENT.complete_authentication.assert_called_once_with("123456")
             NOTIFY.assert_called_once_with(TELEGRAM, "Authentication successful.")
 
 # --------------------------------------------------------------------------
@@ -169,7 +210,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
             CLIENT = Mock()
-            CLIENT.authenticate.return_value = (False, "Two-factor code is required")
+            CLIENT.start_authentication.return_value = (False, "Two-factor code is required")
 
             with patch("app.main.notify") as NOTIFY:
                 NEW_STATE, IS_AUTHENTICATED, DETAILS = attempt_auth(
@@ -185,6 +226,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertIn("Two-factor code is required", DETAILS)
             self.assertTrue(NEW_STATE.auth_pending)
             self.assertFalse(NEW_STATE.reauth_pending)
+            CLIENT.start_authentication.assert_called_once()
             self.assertIn("MFA required", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
@@ -196,7 +238,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
             CLIENT = Mock()
-            CLIENT.authenticate.return_value = (False, "Bad credentials")
+            CLIENT.start_authentication.return_value = (False, "Bad credentials")
 
             with patch("app.main.notify") as NOTIFY:
                 NEW_STATE, IS_AUTHENTICATED, _ = attempt_auth(
@@ -210,6 +252,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 
             self.assertFalse(IS_AUTHENTICATED)
             self.assertTrue(NEW_STATE.auth_pending)
+            CLIENT.start_authentication.assert_called_once()
             self.assertIn("Authentication failed", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
@@ -314,7 +357,12 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 
             SAVE_MANIFEST.assert_called_once()
             self.assertEqual(NOTIFY.call_count, 2)
-            LOG_LINE.assert_called_once()
+            self.assertGreaterEqual(LOG_LINE.call_count, 1)
+            self.assertEqual(LOG_LINE.call_args_list[-1].args[1], "info")
+            self.assertEqual(LOG_LINE.call_args_list[0].args[1], "debug")
+            self.assertIn("Loaded manifest entries:", LOG_LINE.call_args_list[0].args[2])
+            self.assertEqual(LOG_LINE.call_args_list[1].args[1], "debug")
+            self.assertIn("Sync summary detail:", LOG_LINE.call_args_list[1].args[2])
 
 # --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.
@@ -457,8 +505,12 @@ class TestMainEntrypoint(unittest.TestCase):
                                 with patch("app.main.ICloudDriveClient", return_value=Mock()):
                                     with patch("app.main.load_auth_state", return_value=STATE):
                                         with patch("app.main.attempt_auth", return_value=(STATE, False, "fail")):
-                                            with patch("app.main.notify") as NOTIFY:
-                                                RESULT = __import__("app.main", fromlist=["main"]).main()
+                                            with patch(
+                                                "app.main.wait_for_one_shot_auth",
+                                                return_value=(STATE, False),
+                                            ):
+                                                with patch("app.main.notify") as NOTIFY:
+                                                    RESULT = __import__("app.main", fromlist=["main"]).main()
 
             self.assertEqual(RESULT, 2)
             NOTIFY.assert_called_with(
@@ -482,7 +534,11 @@ class TestMainEntrypoint(unittest.TestCase):
                                 with patch("app.main.ICloudDriveClient", return_value=Mock()):
                                     with patch("app.main.load_auth_state", return_value=STATE):
                                         with patch("app.main.attempt_auth", return_value=(STATE, True, "ok")):
-                                            RESULT = __import__("app.main", fromlist=["main"]).main()
+                                            with patch(
+                                                "app.main.wait_for_one_shot_auth",
+                                                return_value=(STATE, True),
+                                            ):
+                                                RESULT = __import__("app.main", fromlist=["main"]).main()
 
             self.assertEqual(RESULT, 3)
 
@@ -529,6 +585,62 @@ class TestMainEntrypoint(unittest.TestCase):
 
             self.assertEqual(RESULT, 0)
             RUN_BACKUP.assert_called_once()
+
+# --------------------------------------------------------------------------
+# This test confirms one-shot mode runs backup after auth wait succeeds.
+# --------------------------------------------------------------------------
+    def test_main_run_once_runs_backup_after_waited_auth(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            INITIAL_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+            READY_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=INITIAL_STATE):
+                                        with patch("app.main.attempt_auth", return_value=(INITIAL_STATE, False, "mfa")):
+                                            with patch(
+                                                "app.main.wait_for_one_shot_auth",
+                                                return_value=(READY_STATE, True),
+                                            ) as WAIT_AUTH:
+                                                with patch("app.main.enforce_safety_net", return_value=True):
+                                                    with patch("app.main.run_backup") as RUN_BACKUP:
+                                                        RESULT = __import__("app.main", fromlist=["main"]).main()
+
+            self.assertEqual(RESULT, 0)
+            WAIT_AUTH.assert_called_once()
+            RUN_BACKUP.assert_called_once()
+
+# --------------------------------------------------------------------------
+# This test confirms startup emits auth-state debug diagnostics.
+# --------------------------------------------------------------------------
+    def test_main_logs_startup_auth_state_debug_line(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_runtime(TMPDIR).__dict__ | {"run_once": True}))
+            STATE = AuthState("1970-01-01T00:00:00+00:00", True, False, "none")
+
+            with patch("app.main.load_config", return_value=CONFIG):
+                with patch("app.main.configure_keyring"):
+                    with patch("app.main.load_credentials", return_value=("", "")):
+                        with patch("app.main.validate_config", return_value=[]):
+                            with patch("app.main.save_credentials"):
+                                with patch("app.main.ICloudDriveClient", return_value=Mock()):
+                                    with patch("app.main.load_auth_state", return_value=STATE):
+                                        with patch("app.main.attempt_auth", return_value=(STATE, False, "mfa")):
+                                            with patch("app.main.wait_for_one_shot_auth", return_value=(STATE, False)):
+                                                with patch("app.main.notify"):
+                                                    with patch("app.main.log_line") as LOG_LINE:
+                                                        __import__("app.main", fromlist=["main"]).main()
+
+            DEBUG_LINES = [CALL for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
+            self.assertGreaterEqual(len(DEBUG_LINES), 1)
+            self.assertTrue(
+                any("Auth state after startup attempt:" in CALL.args[2] for CALL in DEBUG_LINES)
+            )
 
 # --------------------------------------------------------------------------
 # This test confirms loop sleeps and continues when not due and no request.

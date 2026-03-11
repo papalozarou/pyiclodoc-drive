@@ -20,9 +20,15 @@ from keyrings.alt.file import PlaintextKeyring
 # ------------------------------------------------------------------------------
 def configure_keyring(CONFIG_DIR: Path) -> None:
     KEYRING_DIR = CONFIG_DIR / "keyring"
+    KEYRING_FILE_PATH = KEYRING_DIR / "keyring_pass.cfg"
     KEYRING_DIR.mkdir(parents=True, exist_ok=True)
-    os.environ["PYTHON_KEYRING_FILENAME"] = str(KEYRING_DIR / "keyring_pass.cfg")
-    keyring.set_keyring(PlaintextKeyring())
+    os.environ["PYTHON_KEYRING_FILENAME"] = str(KEYRING_FILE_PATH)
+    os.environ["HOME"] = str(CONFIG_DIR)
+    os.environ["XDG_DATA_HOME"] = str(CONFIG_DIR / ".local" / "share")
+
+    KEYRING_BACKEND = PlaintextKeyring()
+    KEYRING_BACKEND.file_path = str(KEYRING_FILE_PATH)
+    keyring.set_keyring(KEYRING_BACKEND)
 
 
 # ------------------------------------------------------------------------------

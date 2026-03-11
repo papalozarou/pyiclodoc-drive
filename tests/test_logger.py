@@ -42,6 +42,114 @@ class TestLogger(unittest.TestCase):
             CONTENTS = LOG_FILE.read_text(encoding="utf-8").strip()
             self.assertEqual(CONTENTS, EXPECTED)
 
+# --------------------------------------------------------------------------
+# This test confirms debug lines are suppressed when LOG_LEVEL is info.
+# --------------------------------------------------------------------------
+    def test_log_line_suppresses_debug_when_info_level(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+
+            with patch.dict("os.environ", {"LOG_LEVEL": "info"}):
+                with patch.object(logger, "get_timestamp", return_value="2026-03-09 12:34:56 UTC"):
+                    with patch("builtins.print") as PRINT:
+                        logger.log_line(LOG_FILE, "debug", "Hidden debug.")
+
+            PRINT.assert_not_called()
+            self.assertFalse(LOG_FILE.exists())
+
+# --------------------------------------------------------------------------
+# This test confirms debug lines are emitted when LOG_LEVEL is debug.
+# --------------------------------------------------------------------------
+    def test_log_line_emits_debug_when_debug_level(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+
+            with patch.dict("os.environ", {"LOG_LEVEL": "debug"}):
+                with patch.object(logger, "get_timestamp", return_value="2026-03-09 12:34:56 UTC"):
+                    with patch("builtins.print") as PRINT:
+                        logger.log_line(LOG_FILE, "debug", "Visible debug.")
+
+            EXPECTED = "[2026-03-09 12:34:56 UTC] [DEBUG] Visible debug."
+            PRINT.assert_called_once_with(EXPECTED, flush=True)
+            CONTENTS = LOG_FILE.read_text(encoding="utf-8").strip()
+            self.assertEqual(CONTENTS, EXPECTED)
+
+# --------------------------------------------------------------------------
+# This test confirms info lines are emitted when LOG_LEVEL is info.
+# --------------------------------------------------------------------------
+    def test_log_line_emits_info_when_info_level(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+
+            with patch.dict("os.environ", {"LOG_LEVEL": "info"}):
+                with patch.object(logger, "get_timestamp", return_value="2026-03-09 12:34:56 UTC"):
+                    with patch("builtins.print") as PRINT:
+                        logger.log_line(LOG_FILE, "info", "Visible info.")
+
+            EXPECTED = "[2026-03-09 12:34:56 UTC] [INFO] Visible info."
+            PRINT.assert_called_once_with(EXPECTED, flush=True)
+            CONTENTS = LOG_FILE.read_text(encoding="utf-8").strip()
+            self.assertEqual(CONTENTS, EXPECTED)
+
+# --------------------------------------------------------------------------
+# This test confirms error lines are emitted at info level threshold.
+# --------------------------------------------------------------------------
+    def test_log_line_emits_error_when_info_level(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+
+            with patch.dict("os.environ", {"LOG_LEVEL": "info"}):
+                with patch.object(logger, "get_timestamp", return_value="2026-03-09 12:34:56 UTC"):
+                    with patch("builtins.print") as PRINT:
+                        logger.log_line(LOG_FILE, "error", "Visible error.")
+
+            EXPECTED = "[2026-03-09 12:34:56 UTC] [ERROR] Visible error."
+            PRINT.assert_called_once_with(EXPECTED, flush=True)
+            CONTENTS = LOG_FILE.read_text(encoding="utf-8").strip()
+            self.assertEqual(CONTENTS, EXPECTED)
+
+# --------------------------------------------------------------------------
+# This test confirms invalid LOG_LEVEL values fall back to info threshold.
+# --------------------------------------------------------------------------
+    def test_log_line_invalid_log_level_falls_back_to_info(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+
+            with patch.dict("os.environ", {"LOG_LEVEL": "invalid"}):
+                with patch.object(logger, "get_timestamp", return_value="2026-03-09 12:34:56 UTC"):
+                    with patch("builtins.print") as PRINT:
+                        logger.log_line(LOG_FILE, "debug", "Hidden debug.")
+
+            PRINT.assert_not_called()
+            self.assertFalse(LOG_FILE.exists())
+
+# --------------------------------------------------------------------------
+# This test confirms get_log_level falls back to info on invalid values.
+# --------------------------------------------------------------------------
+    def test_get_log_level_fallbacks(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(logger.get_log_level(), "info")
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "DEBUG"}):
+            self.assertEqual(logger.get_log_level(), "debug")
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "garbage"}):
+            self.assertEqual(logger.get_log_level(), "info")
+
+# --------------------------------------------------------------------------
+# This test confirms should_log threshold decisions across levels.
+# --------------------------------------------------------------------------
+    def test_should_log_threshold_behaviour(self) -> None:
+        with patch.dict("os.environ", {"LOG_LEVEL": "info"}):
+            self.assertFalse(logger.should_log("debug"))
+            self.assertTrue(logger.should_log("info"))
+            self.assertTrue(logger.should_log("error"))
+
+        with patch.dict("os.environ", {"LOG_LEVEL": "debug"}):
+            self.assertTrue(logger.should_log("debug"))
+            self.assertTrue(logger.should_log("info"))
+            self.assertTrue(logger.should_log("error"))
+
 
 if __name__ == "__main__":
     unittest.main()

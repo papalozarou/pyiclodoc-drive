@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from pathlib import Path
 from typing import Callable, Any
 import shutil
@@ -108,46 +109,41 @@ class ICloudDriveClient:
     def _create_service(self) -> PyiCloudService:
         SERVICE_KWARGS = {
             "cookie_directory": str(self.config.cookie_dir),
-            "session_directory": str(self.config.session_dir),
         }
 
-        try:
-            return PyiCloudService(
-                self.config.icloud_email,
-                self.config.icloud_password,
-                **SERVICE_KWARGS,
-            )
-        except TypeError as ERROR:
-            ERROR_TEXT = str(ERROR)
+        if self._supports_session_directory():
+            SERVICE_KWARGS["session_directory"] = str(self.config.session_dir)
 
-            if "session_directory" not in ERROR_TEXT:
-                raise
-
-            SERVICE_KWARGS.pop("session_directory", None)
-            return PyiCloudService(
-                self.config.icloud_email,
-                self.config.icloud_password,
-                **SERVICE_KWARGS,
-            )
+        return PyiCloudService(
+            self.config.icloud_email,
+            self.config.icloud_password,
+            **SERVICE_KWARGS,
+        )
 
 # --------------------------------------------------------------------------
-# This function authenticates with iCloud and completes MFA using a
-# callback-supplied code.
+# This function checks whether pyicloud supports "session_directory".
 #
-# 1. "CODE_PROVIDER" is a zero-argument callable returning an MFA code when
-#    needed.
+# Returns: True when the constructor supports "session_directory".
+# --------------------------------------------------------------------------
+    def _supports_session_directory(self) -> bool:
+        try:
+            PARAMETERS = inspect.signature(PyiCloudService.__init__).parameters
+        except (TypeError, ValueError):
+            return False
+
+        return "session_directory" in PARAMETERS
+
+# --------------------------------------------------------------------------
+# This function starts an iCloud authentication attempt.
 #
 # Returns: Tuple "(is_authenticated, details_message)".
-#
-# Notes: Client behaviour follows pyicloud session/cookie usage:
-# https://github.com/picklepete/pyicloud
 # --------------------------------------------------------------------------
-    def authenticate(self, CODE_PROVIDER: Callable[[], str]) -> tuple[bool, str]:
+    def start_authentication(self) -> tuple[bool, str]:
         self.prepare_compat_paths()
         self.api = self._create_service()
 
         if self.api.requires_2fa:
-            return self._handle_2fa(CODE_PROVIDER)
+            return False, "Two-factor code is required."
 
         if getattr(self.api, "requires_2sa", False):
             return False, "Two-step authentication is required; use app-specific passwords where possible."
@@ -155,21 +151,23 @@ class ICloudDriveClient:
         return True, "Authenticated successfully."
 
 # --------------------------------------------------------------------------
-# This function validates a two-factor code and attempts to trust the
-# session for reduced prompts.
+# This function completes a pending authentication challenge with an MFA code.
 #
-# 1. "CODE_PROVIDER" is a zero-argument callable returning an MFA code.
+# 1. "CODE" is the MFA code to validate.
 #
 # Returns: Tuple "(is_authenticated, details_message)".
 # --------------------------------------------------------------------------
-    def _handle_2fa(self, CODE_PROVIDER: Callable[[], str]) -> tuple[bool, str]:
+    def complete_authentication(self, CODE: str) -> tuple[bool, str]:
         if self.api is None:
-            return False, "Authentication state unavailable."
+            return False, "Authentication session is not initialised."
 
-        CODE = CODE_PROVIDER().strip()
+        CODE = CODE.strip()
 
         if not CODE:
             return False, "Two-factor code is required."
+
+        if not self.api.requires_2fa:
+            return True, "Authenticated successfully."
 
         IS_VALID = self.api.validate_2fa_code(CODE)
 
@@ -181,6 +179,22 @@ class ICloudDriveClient:
 
         self.api.trust_session()
         return True, "Authenticated successfully with trusted 2FA session."
+
+# --------------------------------------------------------------------------
+# This function authenticates with iCloud and optionally completes MFA.
+#
+# 1. "CODE_PROVIDER" is a zero-argument callable returning an MFA code when
+#    needed.
+#
+# Returns: Tuple "(is_authenticated, details_message)".
+# --------------------------------------------------------------------------
+    def authenticate(self, CODE_PROVIDER: Callable[[], str]) -> tuple[bool, str]:
+        CODE = CODE_PROVIDER().strip()
+
+        if CODE:
+            return self.complete_authentication(CODE)
+
+        return self.start_authentication()
 
 # --------------------------------------------------------------------------
 # This function traverses iCloud Drive and yields flattened entries
@@ -210,6 +224,11 @@ class ICloudDriveClient:
         DIRECTORY_INFO = self._node_dir(NODE)
         DIRS = DIRECTORY_INFO.get("dirs", [])
         FILES = DIRECTORY_INFO.get("files", [])
+        NAMES = DIRECTORY_INFO.get("names", [])
+
+        if isinstance(NAMES, list) and NAMES:
+            RESULT.extend(self._entries_from_names(NODE, CURRENT_PATH, NAMES))
+            return RESULT
 
         RESULT.extend(self._entries_from_directories(NODE, CURRENT_PATH, DIRS))
         RESULT.extend(self._entries_from_files(CURRENT_PATH, FILES))
@@ -226,13 +245,191 @@ class ICloudDriveClient:
     def _node_dir(self, NODE: Any) -> dict[str, Any]:
         try:
             PAYLOAD = NODE.dir()
-        except (AttributeError, TypeError, ValueError):
-            return {"dirs": [], "files": []}
+        except (AttributeError, NotADirectoryError, TypeError, ValueError):
+            return {"dirs": [], "files": [], "names": []}
 
-        if isinstance(PAYLOAD, dict):
-            return PAYLOAD
+        return self._normalise_dir_payload(PAYLOAD)
 
-        return {"dirs": [], "files": []}
+# --------------------------------------------------------------------------
+# This function normalises pyicloud directory payload variants.
+#
+# 1. "PAYLOAD" is the value returned from "NODE.dir()".
+#
+# Returns: Dictionary with canonical "dirs" and "files" lists.
+# --------------------------------------------------------------------------
+    def _normalise_dir_payload(self, PAYLOAD: Any) -> dict[str, Any]:
+        if isinstance(PAYLOAD, list):
+            if all(isinstance(ITEM, str) for ITEM in PAYLOAD):
+                return {"dirs": [], "files": [], "names": PAYLOAD}
+
+            return self._normalise_items_payload(PAYLOAD)
+
+        if not isinstance(PAYLOAD, dict):
+            return {"dirs": [], "files": [], "names": []}
+
+        if isinstance(PAYLOAD.get("dirs"), list) and isinstance(PAYLOAD.get("files"), list):
+            return {
+                "dirs": PAYLOAD.get("dirs", []),
+                "files": PAYLOAD.get("files", []),
+                "names": [],
+            }
+
+        if isinstance(PAYLOAD.get("folders"), list) and isinstance(PAYLOAD.get("files"), list):
+            return {
+                "dirs": PAYLOAD.get("folders", []),
+                "files": PAYLOAD.get("files", []),
+                "names": [],
+            }
+
+        for KEY in ("items", "children", "entries", "contents"):
+            ITEMS = PAYLOAD.get(KEY)
+
+            if isinstance(ITEMS, list):
+                return self._normalise_items_payload(ITEMS)
+
+        return {"dirs": [], "files": [], "names": []}
+
+# --------------------------------------------------------------------------
+# This function splits mixed item payloads into canonical directories/files.
+#
+# 1. "ITEMS" is a list of drive item dictionaries.
+#
+# Returns: Dictionary with canonical "dirs" and "files" lists.
+# --------------------------------------------------------------------------
+    def _normalise_items_payload(self, ITEMS: list[Any]) -> dict[str, Any]:
+        DIRS: list[Any] = []
+        FILES: list[Any] = []
+
+        for ITEM in ITEMS:
+            if not isinstance(ITEM, dict):
+                continue
+
+            ITEM_TYPE = str(
+                ITEM.get("type", ITEM.get("item_type", ITEM.get("itemType", "")))
+            ).lower()
+            IS_DIR = bool(ITEM.get("isFolder", False))
+            IS_DIR = IS_DIR or ITEM_TYPE in {"folder", "directory", "dir"}
+            IS_DIR = IS_DIR or bool(ITEM.get("is_folder", False))
+
+            if IS_DIR:
+                DIRS.append(ITEM)
+                continue
+
+            FILES.append(ITEM)
+
+        return {"dirs": DIRS, "files": FILES, "names": []}
+
+# --------------------------------------------------------------------------
+# This function builds entries from child-name payloads using child nodes.
+#
+# 1. "NODE" is current drive node.
+# 2. "CURRENT_PATH" is current relative path.
+# 3. "NAMES" is list of child names from pyicloud.
+#
+# Returns: Remote entries discovered from child nodes.
+# --------------------------------------------------------------------------
+    def _entries_from_names(
+        self,
+        NODE: Any,
+        CURRENT_PATH: str,
+        NAMES: list[str],
+    ) -> list[RemoteEntry]:
+        RESULT: list[RemoteEntry] = []
+
+        for NAME in NAMES:
+            CLEAN_NAME = str(NAME).strip()
+
+            if not CLEAN_NAME:
+                continue
+
+            CHILD = self._child_node(NODE, CLEAN_NAME)
+
+            if CHILD is None:
+                continue
+
+            RELATIVE_PATH = f"{CURRENT_PATH}/{CLEAN_NAME}".strip("/")
+            IS_DIR = self._child_is_dir(CHILD)
+
+            if IS_DIR:
+                RESULT.append(
+                    RemoteEntry(
+                        path=RELATIVE_PATH,
+                        is_dir=True,
+                        size=0,
+                        modified=self._child_modified(CHILD),
+                    )
+                )
+                RESULT.extend(self._walk_node(CHILD, RELATIVE_PATH))
+                continue
+
+            RESULT.append(
+                RemoteEntry(
+                    path=RELATIVE_PATH,
+                    is_dir=False,
+                    size=self._child_size(CHILD),
+                    modified=self._child_modified(CHILD),
+                )
+            )
+
+        return RESULT
+
+# --------------------------------------------------------------------------
+# This function infers whether a child node is a directory.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: True for directories, otherwise False.
+# --------------------------------------------------------------------------
+    def _child_is_dir(self, CHILD: Any) -> bool:
+        CHILD_TYPE = str(getattr(CHILD, "type", "")).lower()
+
+        if CHILD_TYPE in {"folder", "directory", "dir"}:
+            return True
+
+        if getattr(CHILD, "is_folder", None) is True:
+            return True
+
+        if getattr(CHILD, "isFolder", None) is True:
+            return True
+
+        try:
+            PAYLOAD = CHILD.dir()
+        except (AttributeError, NotADirectoryError, TypeError, ValueError):
+            return False
+
+        return isinstance(PAYLOAD, (dict, list))
+
+# --------------------------------------------------------------------------
+# This function extracts child modified timestamp as a string.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: Modified timestamp string, or empty string.
+# --------------------------------------------------------------------------
+    def _child_modified(self, CHILD: Any) -> str:
+        VALUE = getattr(CHILD, "date_modified", "")
+
+        if VALUE:
+            return str(VALUE)
+
+        return ""
+
+# --------------------------------------------------------------------------
+# This function extracts child file size with integer fallback.
+#
+# 1. "CHILD" is a pyicloud drive node.
+#
+# Returns: Non-negative file size.
+# --------------------------------------------------------------------------
+    def _child_size(self, CHILD: Any) -> int:
+        RAW_VALUE = getattr(CHILD, "size", 0)
+
+        try:
+            VALUE = int(RAW_VALUE)
+        except (TypeError, ValueError):
+            return 0
+
+        return VALUE if VALUE >= 0 else 0
 
 # --------------------------------------------------------------------------
 # This function converts directory items to entries and recursively
@@ -253,7 +450,7 @@ class ICloudDriveClient:
         RESULT: list[RemoteEntry] = []
 
         for ITEM in DIRS:
-            NAME = str(ITEM.get("name", ""))
+            NAME = self._item_name(ITEM)
 
             if not NAME:
                 continue
@@ -264,7 +461,7 @@ class ICloudDriveClient:
                     path=RELATIVE_PATH,
                     is_dir=True,
                     size=0,
-                    modified=str(ITEM.get("dateModified", "")),
+                    modified=self._item_modified(ITEM),
                 )
             )
 
@@ -289,14 +486,14 @@ class ICloudDriveClient:
         RESULT: list[RemoteEntry] = []
 
         for ITEM in FILES:
-            NAME = str(ITEM.get("name", ""))
+            NAME = self._item_name(ITEM)
 
             if not NAME:
                 continue
 
             RELATIVE_PATH = f"{CURRENT_PATH}/{NAME}".strip("/")
-            SIZE = int(ITEM.get("size") or 0)
-            MODIFIED = str(ITEM.get("dateModified", ""))
+            SIZE = self._item_size(ITEM)
+            MODIFIED = self._item_modified(ITEM)
             RESULT.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
@@ -307,6 +504,61 @@ class ICloudDriveClient:
             )
 
         return RESULT
+
+# --------------------------------------------------------------------------
+# This function extracts a filesystem name from varied pyicloud item shapes.
+#
+# 1. "ITEM" is a metadata dictionary for a drive node.
+#
+# Returns: Item name string, or empty string when missing.
+# --------------------------------------------------------------------------
+    def _item_name(self, ITEM: dict[str, Any]) -> str:
+        for KEY in ("name", "filename", "displayName", "title"):
+            VALUE = str(ITEM.get(KEY, "")).strip()
+
+            if VALUE:
+                return VALUE
+
+        return ""
+
+# --------------------------------------------------------------------------
+# This function extracts a modified timestamp from metadata variants.
+#
+# 1. "ITEM" is a metadata dictionary for a drive node.
+#
+# Returns: Modified timestamp string, or empty string.
+# --------------------------------------------------------------------------
+    def _item_modified(self, ITEM: dict[str, Any]) -> str:
+        for KEY in ("dateModified", "modified", "date_modified"):
+            VALUE = str(ITEM.get(KEY, "")).strip()
+
+            if VALUE:
+                return VALUE
+
+        return ""
+
+# --------------------------------------------------------------------------
+# This function extracts item byte size with robust integer fallback.
+#
+# 1. "ITEM" is a metadata dictionary for a drive node.
+#
+# Returns: Non-negative file size.
+# --------------------------------------------------------------------------
+    def _item_size(self, ITEM: dict[str, Any]) -> int:
+        for KEY in ("size", "bytes", "itemSize"):
+            RAW_VALUE = ITEM.get(KEY)
+
+            if RAW_VALUE is None:
+                continue
+
+            try:
+                VALUE = int(RAW_VALUE)
+            except (TypeError, ValueError):
+                continue
+
+            return VALUE if VALUE >= 0 else 0
+
+        return 0
 
 # --------------------------------------------------------------------------
 # This function safely resolves a named child node from a drive node.
@@ -342,11 +594,45 @@ class ICloudDriveClient:
         LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            RESPONSE = FILE_OBJ.download()
+            if hasattr(FILE_OBJ, "download"):
+                RESPONSE = FILE_OBJ.download()
+                return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+
+            if not hasattr(FILE_OBJ, "open"):
+                return False
+
+            OPEN_RESULT = FILE_OBJ.open(stream=True)
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
             return False
 
-        return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+        return self._write_open_result(OPEN_RESULT, LOCAL_PATH)
+
+# --------------------------------------------------------------------------
+# This function writes content from a file-open result and closes it when
+# required.
+#
+# 1. "OPEN_RESULT" is the object returned from "FILE_OBJ.open(stream=True)".
+# 2. "LOCAL_PATH" is filesystem destination.
+#
+# Returns: True on successful write, otherwise False.
+# --------------------------------------------------------------------------
+    def _write_open_result(self, OPEN_RESULT: Any, LOCAL_PATH: Path) -> bool:
+        if hasattr(OPEN_RESULT, "__enter__") and hasattr(OPEN_RESULT, "__exit__"):
+            with OPEN_RESULT as RESPONSE:
+                return self._write_downloaded_content(RESPONSE, LOCAL_PATH)
+
+        try:
+            RESULT = self._write_downloaded_content(OPEN_RESULT, LOCAL_PATH)
+        finally:
+            CLOSE_METHOD = getattr(OPEN_RESULT, "close", None)
+
+            if callable(CLOSE_METHOD):
+                try:
+                    CLOSE_METHOD()
+                except OSError:
+                    pass
+
+        return RESULT
 
 # --------------------------------------------------------------------------
 # This function resolves a file object from a slash-separated

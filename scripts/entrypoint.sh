@@ -14,13 +14,18 @@ set -eu
 # "_FILE" convention aligns with container secret patterns:
 # https://docs.docker.com/compose/how-tos/use-secrets/
 #
-# The function exits non-zero when a declared secret file is missing.
+# The function exits non-zero when secret input is invalid.
 # ------------------------------------------------------------------------------
 readSecretVar() {
   VAR_NAME="${1:?}"
   FILE_VAR_NAME="${VAR_NAME}_FILE"
   CURRENT_VALUE="$(eval "printf '%s' \"\${$VAR_NAME:-}\"")"
   FILE_PATH="$(eval "printf '%s' \"\${$FILE_VAR_NAME:-}\"")"
+
+  if [ -n "$CURRENT_VALUE" ] && [ -n "$FILE_PATH" ]; then
+    echo "Both $VAR_NAME and $FILE_VAR_NAME are set. Use only one." >&2
+    exit 1
+  fi
 
   if [ -n "$CURRENT_VALUE" ]; then
     return 0
@@ -35,7 +40,18 @@ readSecretVar() {
     exit 1
   fi
 
-  SECRET_VALUE="$(cat "$FILE_PATH")"
+  if [ ! -r "$FILE_PATH" ]; then
+    echo "Secret file is not readable for $VAR_NAME: $FILE_PATH" >&2
+    exit 1
+  fi
+
+  SECRET_VALUE="$(tr -d '\r\n' < "$FILE_PATH")"
+
+  if [ -z "$SECRET_VALUE" ]; then
+    echo "Secret file for $VAR_NAME is empty after sanitisation: $FILE_PATH" >&2
+    exit 1
+  fi
+
   export "$VAR_NAME=$SECRET_VALUE"
 }
 

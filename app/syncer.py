@@ -239,7 +239,12 @@ def perform_incremental_sync(
             for FUTURE in as_completed(FUTURES):
                 try:
                     SUCCESS = FUTURE.result()
-                except Exception:
+                except Exception as ERROR:
+                    print(
+                        "File transfer worker failed: "
+                        f"{type(ERROR).__name__}: {ERROR}",
+                        flush=True,
+                    )
                     ERRORS += 1
                     continue
 

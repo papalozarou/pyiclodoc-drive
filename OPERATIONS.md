@@ -4,11 +4,15 @@
 
 - Compose `init: true` is required by the provided service definitions.
 - Health checks use `parallel` from the microcheck toolbox image.
+- A background heartbeat updater refreshes `/logs/heartbeat.txt` every 30
+  seconds in both recurring and one-shot execution paths.
 - Telegram commands are ignored unless they come from `H_TGM_CHAT_ID`.
 - Entrypoint starts as root only to read Docker secret files, then drops to
   `PUID:PGID` before launching the worker process.
 - Services keep `cap_drop: ALL` and add only `SETUID` and `SETGID` so
   privilege drop works.
+- Set `LOG_LEVEL=debug` in Compose `default-env` for verbose runtime
+  diagnostics.
 
 ## Privilege model
 
@@ -25,8 +29,13 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 ## One-shot mode
 
 - Enable with `<SVC>_RUN_ONCE=true`.
-- Recommended with `restart: "no"` to avoid automatic restarts.
-- Worker exits after one backup attempt.
+- Set `<SVC>_RESTART_POLICY=no` to avoid automatic restarts.
+- Worker waits for Telegram `auth` or `reauth` commands when MFA or reauth is
+  pending, then runs one backup attempt and exits.
+- While one-shot is running, heartbeat updates continue so container health
+  status reflects liveness during auth wait and backup execution.
+- If auth does not complete within the one-shot wait window, worker exits
+  non-zero.
 - Exit is non-zero when auth is incomplete, reauth is pending, or first-run
   safety net blocks backup.
 

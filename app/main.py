@@ -8,6 +8,7 @@ import calendar
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import threading
 import time
 
 from dateutil import parser as date_parser
@@ -39,6 +40,9 @@ MONTHLY_WEEK_MAP = {
     "fourth": 4,
     "last": -1,
 }
+RUN_ONCE_AUTH_WAIT_SECONDS = 900
+RUN_ONCE_AUTH_POLL_SECONDS = 5
+HEARTBEAT_TOUCH_INTERVAL_SECONDS = 30
 
 
 # ------------------------------------------------------------------------------
@@ -442,8 +446,32 @@ def reauth_days_left(LAST_AUTH_UTC: str, INTERVAL_DAYS: int) -> int:
 # Returns: None.
 # ------------------------------------------------------------------------------
 def update_heartbeat(PATH: Path) -> None:
-    PATH.parent.mkdir(parents=True, exist_ok=True)
-    PATH.touch()
+    try:
+        PATH.parent.mkdir(parents=True, exist_ok=True)
+        PATH.touch()
+    except OSError:
+        return
+
+
+# ------------------------------------------------------------------------------
+# This function starts a daemon heartbeat updater thread.
+#
+# 1. "PATH" is the heartbeat file path.
+#
+# Returns: Stop-event used to end the updater loop on process exit.
+# ------------------------------------------------------------------------------
+def start_heartbeat_updater(PATH: Path) -> threading.Event:
+    STOP_EVENT = threading.Event()
+
+    def run_heartbeat_loop() -> None:
+        update_heartbeat(PATH)
+
+        while not STOP_EVENT.wait(HEARTBEAT_TOUCH_INTERVAL_SECONDS):
+            update_heartbeat(PATH)
+
+    THREAD = threading.Thread(target=run_heartbeat_loop, daemon=True)
+    THREAD.start()
+    return STOP_EVENT
 
 
 # ------------------------------------------------------------------------------
@@ -479,7 +507,11 @@ def attempt_auth(
     PROVIDED_CODE: str,
 ) -> tuple[AuthState, bool, str]:
     CODE = PROVIDED_CODE.strip()
-    IS_SUCCESS, DETAILS = CLIENT.authenticate(lambda: CODE)
+
+    if CODE:
+        IS_SUCCESS, DETAILS = CLIENT.complete_authentication(CODE)
+    else:
+        IS_SUCCESS, DETAILS = CLIENT.start_authentication()
 
     if IS_SUCCESS:
         NEW_STATE = AuthState(
@@ -641,9 +673,20 @@ def run_backup(
     LOG_FILE: Path,
 ) -> None:
     MANIFEST = load_manifest(CONFIG.manifest_path)
+    log_line(LOG_FILE, "debug", f"Loaded manifest entries: {len(MANIFEST)}")
     notify(TELEGRAM, "Backup starting.")
 
     SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, CONFIG.output_dir, MANIFEST)
+    log_line(
+        LOG_FILE,
+        "debug",
+        "Sync summary detail: "
+        f"total={SUMMARY.total_files}, "
+        f"transferred={SUMMARY.transferred_files}, "
+        f"skipped={SUMMARY.skipped_files}, "
+        f"errors={SUMMARY.error_files}, "
+        f"manifest_entries={len(NEW_MANIFEST)}",
+    )
     save_manifest(CONFIG.manifest_path, NEW_MANIFEST)
 
     MESSAGE = (
@@ -714,94 +757,44 @@ def handle_command(
 
 
 # ------------------------------------------------------------------------------
-# This function is the worker entrypoint used by the container launcher.
+# This function waits for one-shot authentication commands before exit.
 #
-# Returns: Non-zero on startup validation/runtime failure.
+# 1. "CONFIG" is runtime configuration.
+# 2. "CLIENT" is iCloud client wrapper.
+# 3. "AUTH_STATE" is current auth state.
+# 4. "IS_AUTHENTICATED" tracks current auth validity.
+# 5. "TELEGRAM" is Telegram integration configuration.
+#
+# Returns: Tuple "(auth_state, is_authenticated)".
 # ------------------------------------------------------------------------------
-def main() -> int:
-    CONFIG = load_config()
-    LOG_FILE = CONFIG.logs_dir / "worker.log"
-    TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
-
-    configure_keyring(CONFIG.config_dir)
-    STORED_EMAIL, STORED_PASSWORD = load_credentials(
-        CONFIG.keychain_service_name,
-        CONFIG.container_username,
-    )
-    CONFIG = replace(
-        CONFIG,
-        icloud_email=CONFIG.icloud_email or STORED_EMAIL,
-        icloud_password=CONFIG.icloud_password or STORED_PASSWORD,
-    )
-
-    ERRORS = validate_config(CONFIG)
-
-    if ERRORS:
-        for LINE in ERRORS:
-            log_line(LOG_FILE, "error", LINE)
-
-        return 1
-
-    save_credentials(
-        CONFIG.keychain_service_name,
-        CONFIG.container_username,
-        CONFIG.icloud_email,
-        CONFIG.icloud_password,
-    )
-
-    CLIENT = ICloudDriveClient(CONFIG)
-    AUTH_STATE = load_auth_state(CONFIG.auth_state_path)
-    AUTH_STATE, IS_AUTHENTICATED, DETAILS = attempt_auth(
-        CLIENT,
-        AUTH_STATE,
-        CONFIG.auth_state_path,
-        TELEGRAM,
-        CONFIG.container_username,
-        "",
-    )
-    log_line(LOG_FILE, "info", DETAILS)
-
-    if CONFIG.run_once:
-        if not IS_AUTHENTICATED:
-            notify(TELEGRAM, "One-shot backup skipped because authentication is incomplete.")
-            return 2
-
-        if AUTH_STATE.reauth_pending:
-            notify(TELEGRAM, "One-shot backup skipped because reauthentication is pending.")
-            return 3
-
-        if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
-            return 4
-
-        run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
-        return 0
-
-    BACKUP_REQUESTED = False
-    NEXT_UPDATE_OFFSET: int | None = None
-    INITIAL_EPOCH = int(time.time())
-
-    if CONFIG.schedule_mode == "interval":
-        NEXT_RUN_EPOCH = INITIAL_EPOCH
-    else:
-        NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, INITIAL_EPOCH)
+def wait_for_one_shot_auth(
+    CONFIG: AppConfig,
+    CLIENT: ICloudDriveClient,
+    AUTH_STATE: AuthState,
+    IS_AUTHENTICATED: bool,
+    TELEGRAM: TelegramConfig,
+) -> tuple[AuthState, bool]:
+    START_EPOCH = int(time.time())
+    UPDATE_OFFSET: int | None = None
 
     while True:
-        update_heartbeat(CONFIG.heartbeat_path)
-        AUTH_STATE = process_reauth_reminders(
-            AUTH_STATE,
-            CONFIG.auth_state_path,
+        if IS_AUTHENTICATED and not AUTH_STATE.reauth_pending:
+            return AUTH_STATE, IS_AUTHENTICATED
+
+        NOW_EPOCH = int(time.time())
+        ELAPSED_SECONDS = NOW_EPOCH - START_EPOCH
+
+        if ELAPSED_SECONDS >= RUN_ONCE_AUTH_WAIT_SECONDS:
+            return AUTH_STATE, IS_AUTHENTICATED
+
+        COMMANDS, UPDATE_OFFSET = process_commands(
             TELEGRAM,
             CONFIG.container_username,
-            CONFIG.reauth_interval_days,
-        )
-        COMMANDS, NEXT_UPDATE_OFFSET = process_commands(
-            TELEGRAM,
-            CONFIG.container_username,
-            NEXT_UPDATE_OFFSET,
+            UPDATE_OFFSET,
         )
 
         for COMMAND, ARGS in COMMANDS:
-            AUTH_STATE, IS_AUTHENTICATED, REQUESTED = handle_command(
+            AUTH_STATE, IS_AUTHENTICATED, _ = handle_command(
                 COMMAND,
                 ARGS,
                 CONFIG,
@@ -810,34 +803,162 @@ def main() -> int:
                 IS_AUTHENTICATED,
                 TELEGRAM,
             )
-            BACKUP_REQUESTED = BACKUP_REQUESTED or REQUESTED
 
-        NOW_EPOCH = int(time.time())
-        SCHEDULE_DUE = NOW_EPOCH >= NEXT_RUN_EPOCH
+        time.sleep(RUN_ONCE_AUTH_POLL_SECONDS)
 
-        if not SCHEDULE_DUE and not BACKUP_REQUESTED:
-            time.sleep(5)
-            continue
 
-        NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, NOW_EPOCH)
+# ------------------------------------------------------------------------------
+# This function is the worker entrypoint used by the container launcher.
+#
+# Returns: Non-zero on startup validation/runtime failure.
+# ------------------------------------------------------------------------------
+def main() -> int:
+    CONFIG = load_config()
+    LOG_FILE = CONFIG.logs_dir / "worker.log"
+    TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
+    HEARTBEAT_STOP_EVENT: threading.Event | None = None
 
-        if not IS_AUTHENTICATED:
-            notify(TELEGRAM, "Backup skipped because authentication is incomplete.")
-            time.sleep(5)
-            continue
+    try:
+        configure_keyring(CONFIG.config_dir)
+        STORED_EMAIL, STORED_PASSWORD = load_credentials(
+            CONFIG.keychain_service_name,
+            CONFIG.container_username,
+        )
+        CONFIG = replace(
+            CONFIG,
+            icloud_email=CONFIG.icloud_email or STORED_EMAIL,
+            icloud_password=CONFIG.icloud_password or STORED_PASSWORD,
+        )
 
-        if AUTH_STATE.reauth_pending:
-            notify(TELEGRAM, "Backup skipped because reauthentication is pending.")
-            time.sleep(5)
-            continue
+        ERRORS = validate_config(CONFIG)
 
-        if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
-            time.sleep(30)
-            continue
+        if ERRORS:
+            for LINE in ERRORS:
+                log_line(LOG_FILE, "error", LINE)
 
-        run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
+            return 1
+
+        HEARTBEAT_STOP_EVENT = start_heartbeat_updater(CONFIG.heartbeat_path)
+
+        save_credentials(
+            CONFIG.keychain_service_name,
+            CONFIG.container_username,
+            CONFIG.icloud_email,
+            CONFIG.icloud_password,
+        )
+
+        CLIENT = ICloudDriveClient(CONFIG)
+        AUTH_STATE = load_auth_state(CONFIG.auth_state_path)
+        AUTH_STATE, IS_AUTHENTICATED, DETAILS = attempt_auth(
+            CLIENT,
+            AUTH_STATE,
+            CONFIG.auth_state_path,
+            TELEGRAM,
+            CONFIG.container_username,
+            "",
+        )
+        log_line(LOG_FILE, "info", DETAILS)
+        log_line(
+            LOG_FILE,
+            "debug",
+            "Auth state after startup attempt: "
+            f"is_authenticated={IS_AUTHENTICATED}, "
+            f"auth_pending={AUTH_STATE.auth_pending}, "
+            f"reauth_pending={AUTH_STATE.reauth_pending}",
+        )
+
+        if CONFIG.run_once:
+            if not IS_AUTHENTICATED or AUTH_STATE.reauth_pending:
+                notify(
+                    TELEGRAM,
+                    "One-shot mode waiting for authentication command before backup.",
+                )
+                AUTH_STATE, IS_AUTHENTICATED = wait_for_one_shot_auth(
+                    CONFIG,
+                    CLIENT,
+                    AUTH_STATE,
+                    IS_AUTHENTICATED,
+                    TELEGRAM,
+                )
+
+            if not IS_AUTHENTICATED:
+                notify(TELEGRAM, "One-shot backup skipped because authentication is incomplete.")
+                return 2
+
+            if AUTH_STATE.reauth_pending:
+                notify(TELEGRAM, "One-shot backup skipped because reauthentication is pending.")
+                return 3
+
+            if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
+                return 4
+
+            run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
+            return 0
+
         BACKUP_REQUESTED = False
-        time.sleep(5)
+        NEXT_UPDATE_OFFSET: int | None = None
+        INITIAL_EPOCH = int(time.time())
+
+        if CONFIG.schedule_mode == "interval":
+            NEXT_RUN_EPOCH = INITIAL_EPOCH
+        else:
+            NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, INITIAL_EPOCH)
+
+        while True:
+            AUTH_STATE = process_reauth_reminders(
+                AUTH_STATE,
+                CONFIG.auth_state_path,
+                TELEGRAM,
+                CONFIG.container_username,
+                CONFIG.reauth_interval_days,
+            )
+            COMMANDS, NEXT_UPDATE_OFFSET = process_commands(
+                TELEGRAM,
+                CONFIG.container_username,
+                NEXT_UPDATE_OFFSET,
+            )
+
+            for COMMAND, ARGS in COMMANDS:
+                AUTH_STATE, IS_AUTHENTICATED, REQUESTED = handle_command(
+                    COMMAND,
+                    ARGS,
+                    CONFIG,
+                    CLIENT,
+                    AUTH_STATE,
+                    IS_AUTHENTICATED,
+                    TELEGRAM,
+                )
+                BACKUP_REQUESTED = BACKUP_REQUESTED or REQUESTED
+
+            NOW_EPOCH = int(time.time())
+            SCHEDULE_DUE = NOW_EPOCH >= NEXT_RUN_EPOCH
+
+            if not SCHEDULE_DUE and not BACKUP_REQUESTED:
+                time.sleep(5)
+                continue
+
+            NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, NOW_EPOCH)
+
+            if not IS_AUTHENTICATED:
+                notify(TELEGRAM, "Backup skipped because authentication is incomplete.")
+                time.sleep(5)
+                continue
+
+            if AUTH_STATE.reauth_pending:
+                notify(TELEGRAM, "Backup skipped because reauthentication is pending.")
+                time.sleep(5)
+                continue
+
+            if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
+                time.sleep(30)
+                continue
+
+            run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE)
+            BACKUP_REQUESTED = False
+            time.sleep(5)
+    finally:
+        if HEARTBEAT_STOP_EVENT is not None:
+            HEARTBEAT_STOP_EVENT.set()
 
 
 if __name__ == "__main__":

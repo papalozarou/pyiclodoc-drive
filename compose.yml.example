@@ -15,6 +15,7 @@ x-env:
   TZ: ${H_TZ}
   PUID: ${C_UID}
   PGID: ${C_GID}
+  LOG_LEVEL: info
 
 # ------------------------------------------------------------------------------
 # Docker extension fields for default security options that disallow privilege
@@ -92,7 +93,7 @@ services:
       - ${ALICE_OUTPUT_PATH}:/output
       - ${ALICE_LOGS_PATH}:/logs
     <<: *default-security
-    restart: unless-stopped
+    restart: "${ALICE_RESTART_POLICY}"
 
 # ------------------------------------------------------------------------------
 # Service "icloud_bob" runs the worker with isolated Bob state paths.
@@ -130,4 +131,4 @@ services:
       - ${BOB_OUTPUT_PATH}:/output
       - ${BOB_LOGS_PATH}:/logs
     <<: *default-security
-    restart: unless-stopped
+    restart: "${BOB_RESTART_POLICY}"

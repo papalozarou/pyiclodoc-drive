@@ -62,7 +62,14 @@ These are usually left as-is unless you have a specific reason to change them.
   `last`.
 - `<SVC>_RUN_ONCE`: run one backup pass and exit (`true`/`false`, default
   `false`).
+- `<SVC>_RESTART_POLICY`: Compose restart policy for the service, for example
+  `unless-stopped` or `no`.
 - `<SVC>_REAUTH_INTERVAL_DAYS`: reauthentication window (default `30`).
+
+## Logging
+
+- `LOG_LEVEL`: global worker log verbosity from Compose `default-env`.
+  Supported values are `info` and `debug`; default is `info`.
 
 N.B.
 

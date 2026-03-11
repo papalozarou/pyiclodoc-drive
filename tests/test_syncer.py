@@ -51,6 +51,9 @@ class FakeClient:
 
     def download_file(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
         _ = LOCAL_PATH
+        if REMOTE_PATH == "docs/explode.txt":
+            raise RuntimeError("boom")
+
         return self.download_results.get(REMOTE_PATH, True)
 
 
@@ -180,6 +183,26 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertIn("docs/new.txt", NEW_MANIFEST)
         self.assertIn("docs/unchanged.txt", NEW_MANIFEST)
         self.assertIn("docs/fail.txt", NEW_MANIFEST)
+
+# --------------------------------------------------------------------------
+# This test confirms worker exceptions are counted and logged.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_logs_worker_exception(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/explode.txt", False, 1, "2026-03-09T00:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            with patch("builtins.print") as PRINT:
+                SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), {})
+
+        self.assertEqual(SUMMARY.total_files, 1)
+        self.assertEqual(SUMMARY.transferred_files, 0)
+        self.assertEqual(SUMMARY.skipped_files, 0)
+        self.assertEqual(SUMMARY.error_files, 1)
+        self.assertIn("docs/explode.txt", NEW_MANIFEST)
+        self.assertTrue(any("File transfer worker failed:" in CALL.args[0] for CALL in PRINT.call_args_list))
 
 
 if __name__ == "__main__":

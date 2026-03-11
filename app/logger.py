@@ -4,8 +4,15 @@
 # ------------------------------------------------------------------------------
 
 from pathlib import Path
+import os
 
 from app.time_utils import now_local
+
+LOG_LEVELS = {
+    "debug": 10,
+    "info": 20,
+    "error": 30,
+}
 
 
 # ------------------------------------------------------------------------------
@@ -18,6 +25,34 @@ def get_timestamp() -> str:
 
 
 # ------------------------------------------------------------------------------
+# This function returns the configured log threshold from environment.
+#
+# Returns: Normalised log level token.
+# ------------------------------------------------------------------------------
+def get_log_level() -> str:
+    RAW_VALUE = os.getenv("LOG_LEVEL", "info").strip().lower()
+
+    if RAW_VALUE in LOG_LEVELS:
+        return RAW_VALUE
+
+    return "info"
+
+
+# ------------------------------------------------------------------------------
+# This function checks whether a log line should be emitted.
+#
+# 1. "LEVEL" is message severity token.
+#
+# Returns: True when line should be written and printed.
+# ------------------------------------------------------------------------------
+def should_log(LEVEL: str) -> bool:
+    CURRENT_LEVEL = get_log_level()
+    CURRENT_WEIGHT = LOG_LEVELS.get(CURRENT_LEVEL, LOG_LEVELS["info"])
+    MESSAGE_WEIGHT = LOG_LEVELS.get(LEVEL.lower(), LOG_LEVELS["info"])
+    return MESSAGE_WEIGHT >= CURRENT_WEIGHT
+
+
+# ------------------------------------------------------------------------------
 # This function prints a log line and appends it to the worker log.
 #
 # 1. "LOG_FILE" is the destination log file.
@@ -27,6 +62,9 @@ def get_timestamp() -> str:
 # Returns: None.
 # ------------------------------------------------------------------------------
 def log_line(LOG_FILE: Path, LEVEL: str, MESSAGE: str) -> None:
+    if not should_log(LEVEL):
+        return
+
     LINE = f"[{get_timestamp()}] [{LEVEL.upper()}] {MESSAGE}"
     print(LINE, flush=True)
 
