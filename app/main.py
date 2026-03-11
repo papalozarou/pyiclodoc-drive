@@ -518,7 +518,7 @@ def format_telegram_event(
     DESCRIPTION: str,
     STATUS_LINES: list[str] | None = None,
 ) -> str:
-    LINES = [f"*{ICON} {TITLE}*", DESCRIPTION]
+    LINES = [f"*{ICON} iCloudDD - {TITLE}*", DESCRIPTION]
 
     if STATUS_LINES:
         LINES.extend([LINE for LINE in STATUS_LINES if LINE.strip()])
@@ -1041,7 +1041,11 @@ def main() -> int:
                         "🔑",
                         "Authentication required",
                         f"Authentication required for Apple ID {APPLE_ID_LABEL}.",
-                        ["One-shot mode is waiting for an auth command before backup."],
+                        [
+                            "One-shot mode is waiting for an auth command before backup.",
+                            "Wait window: "
+                            f"{max(1, RUN_ONCE_AUTH_WAIT_SECONDS // 60)} mins.",
+                        ],
                     ),
                 )
                 AUTH_STATE, IS_AUTHENTICATED = wait_for_one_shot_auth(

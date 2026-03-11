@@ -49,18 +49,18 @@ Messages use this compact structure:
 
 Current message templates include:
 
-- `*🟢 Container started*`
-- `*🛑 Container stopped*`
-- `*🔑 Authentication required*`
-- `*🔑 Reauthentication required*`
-- `*✅ Authentication complete*`
-- `*❌ Authentication failed*`
-- `*📥 Backup requested*`
-- `*⬇️ Backup started*`
-- `*📦 Backup complete*`
-- `*⏭️ Backup skipped*`
-- `*⚠️ Safety net blocked*`
-- `*📣 Reauth reminder*`
+- `*🟢 iCloudDD - Container started*`
+- `*🛑 iCloudDD - Container stopped*`
+- `*🔑 iCloudDD - Authentication required*`
+- `*🔑 iCloudDD - Reauthentication required*`
+- `*✅ iCloudDD - Authentication complete*`
+- `*❌ iCloudDD - Authentication failed*`
+- `*📥 iCloudDD - Backup requested*`
+- `*⬇️ iCloudDD - Backup started*`
+- `*📦 iCloudDD - Backup complete*`
+- `*⏭️ iCloudDD - Backup skipped*`
+- `*⚠️ iCloudDD - Safety net blocked*`
+- `*📣 iCloudDD - Reauth reminder*`
 
 Safety-net blocked messages include an explicit expected ownership line:
 
