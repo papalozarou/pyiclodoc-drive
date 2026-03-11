@@ -286,15 +286,24 @@ class TestICloudClientTraversal(unittest.TestCase):
             self.assertEqual(RESULT["dirs"], [])
             self.assertEqual(RESULT["files"], [])
 
-    def test_node_dir_rejects_non_list_payload(self) -> None:
+    def test_node_dir_supports_items_payload(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
             CLIENT = ICloudDriveClient(CONFIG)
-            NODE = FakeNode({"items": [{"name": "docs"}]})
+            NODE = FakeNode(
+                {
+                    "items": [
+                        {"name": "docs", "type": "folder", "dateModified": "m1"},
+                        {"name": "a.txt", "size": 2, "modified": "m2"},
+                    ]
+                }
+            )
 
             RESULT = CLIENT._node_dir(NODE)
 
-            self.assertEqual(RESULT, {"dirs": [], "files": [], "names": []})
+            self.assertEqual(RESULT["names"], [])
+            self.assertEqual(len(RESULT["dirs"]), 1)
+            self.assertEqual(len(RESULT["files"]), 1)
 
     def test_entries_from_files_supports_filename_and_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:

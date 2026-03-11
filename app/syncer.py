@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import os
+import time
 
 from app.icloud_client import ICloudDriveClient, RemoteEntry
 from app.logger import log_line
@@ -195,10 +196,18 @@ def perform_incremental_sync(
     MANIFEST: dict[str, dict[str, Any]],
     LOG_FILE: Path | None = None,
 ) -> tuple[SyncResult, dict[str, dict[str, Any]]]:
+    TRAVERSAL_STARTED_EPOCH = time.monotonic()
     ENTRIES = CLIENT.list_entries()
+    TRAVERSAL_DURATION_SECONDS = time.monotonic() - TRAVERSAL_STARTED_EPOCH
     FILES = [ENTRY for ENTRY in ENTRIES if not ENTRY.is_dir]
     DIRECTORIES = [ENTRY for ENTRY in ENTRIES if ENTRY.is_dir]
     if LOG_FILE is not None:
+        log_line(
+            LOG_FILE,
+            "debug",
+            "Traversal timing detail: "
+            f"list_entries_seconds={TRAVERSAL_DURATION_SECONDS:.3f}",
+        )
         log_line(
             LOG_FILE,
             "debug",

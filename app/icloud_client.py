@@ -235,11 +235,7 @@ class ICloudDriveClient:
         except (AttributeError, NotADirectoryError, TypeError, ValueError):
             return {"dirs": [], "files": [], "names": []}
 
-        if not isinstance(PAYLOAD, list):
-            return {"dirs": [], "files": [], "names": []}
-
-        NAMES = [str(ITEM).strip() for ITEM in PAYLOAD if str(ITEM).strip()]
-        return {"dirs": [], "files": [], "names": NAMES}
+        return self._normalise_dir_payload(PAYLOAD)
 
 # --------------------------------------------------------------------------
 # This function normalises pyicloud directory payload variants.
@@ -382,6 +378,11 @@ class ICloudDriveClient:
 
         if getattr(CHILD, "isFolder", None) is True:
             return True
+
+        OPEN_METHOD = getattr(CHILD, "open", None)
+
+        if callable(OPEN_METHOD):
+            return False
 
         try:
             PAYLOAD = CHILD.dir()

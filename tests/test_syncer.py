@@ -239,6 +239,7 @@ class TestSyncerHelpers(unittest.TestCase):
                 perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST, LOG_FILE)
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
+        self.assertTrue(any("Traversal timing detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Remote listing detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Directory ensured: docs" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("File queued for transfer: docs/new.txt" in LINE for LINE in DEBUG_LINES))
