@@ -55,6 +55,9 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 ## Transfer performance
 
 - Incremental sync uses `manifest.json` and skips unchanged files.
+- On first run with an empty manifest, worker reconciles existing local files
+  under `/output` against remote metadata (size and modified time) and seeds
+  manifest entries without re-downloading matched files.
 - Directory traversal can run in bounded parallel mode with
   `SYNC_TRAVERSAL_WORKERS`.
 - Changed-file downloads run in parallel automatically based on host CPU.

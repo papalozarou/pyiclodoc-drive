@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, TimeoutError, wait
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import os
@@ -35,6 +36,7 @@ TRANSFER_RETRY_ERROR_MARKERS = (
     "timeout",
     "connection reset",
 )
+RECONCILE_MTIME_TOLERANCE_SECONDS = 2.0
 
 
 # ------------------------------------------------------------------------------
@@ -273,15 +275,34 @@ def perform_incremental_sync(
     NEW_MANIFEST: dict[str, dict[str, Any]] = {}
     TRANSFER_CANDIDATES: list[RemoteEntry] = []
     TRANSFER_CANDIDATE_METADATA: dict[str, dict[str, Any]] = {}
+    USE_LOCAL_RECONCILIATION = len(MANIFEST) == 0
+    LOCAL_FILE_INDEX: dict[str, tuple[int, float]] = {}
 
     TRANSFERRED = 0
     TRANSFERRED_BYTES = 0
     SKIPPED = 0
     ERRORS = 0
 
+    if USE_LOCAL_RECONCILIATION:
+        if LOG_FILE is not None:
+            log_line(LOG_FILE, "info", "Reconciliation started for first run.")
+
+        LOCAL_FILE_INDEX = build_local_file_index(OUTPUT_DIR)
+
+        if LOG_FILE is not None:
+            log_line(
+                LOG_FILE,
+                "info",
+                f"Reconciliation finished. local_files={len(LOCAL_FILE_INDEX)}.",
+            )
+
     for ENTRY in FILES:
         SHOULD_TRANSFER = needs_transfer(ENTRY, MANIFEST)
         ENTRY_METADATA = entry_metadata(ENTRY)
+
+        if SHOULD_TRANSFER and USE_LOCAL_RECONCILIATION:
+            LOCAL_METADATA = LOCAL_FILE_INDEX.get(ENTRY.path)
+            SHOULD_TRANSFER = not is_local_file_aligned_with_remote(ENTRY, LOCAL_METADATA)
 
         if SHOULD_TRANSFER:
             TRANSFER_CANDIDATES.append(ENTRY)
@@ -296,11 +317,18 @@ def perform_incremental_sync(
             SKIPPED += 1
             NEW_MANIFEST[ENTRY.path] = ENTRY_METADATA
             if LOG_FILE is not None:
-                log_line(
-                    LOG_FILE,
-                    "debug",
-                    f"File skipped unchanged: {ENTRY.path}",
-                )
+                if USE_LOCAL_RECONCILIATION and ENTRY.path in LOCAL_FILE_INDEX:
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        f"File skipped reconciled: {ENTRY.path}",
+                    )
+                else:
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        f"File skipped unchanged: {ENTRY.path}",
+                    )
 
     if LOG_FILE is not None:
         log_line(
@@ -640,6 +668,83 @@ def iter_local_directories(OUTPUT_DIR: Path):
     DIRECTORIES = [PATH for PATH in OUTPUT_DIR.rglob("*") if PATH.is_dir()]
     DIRECTORIES.sort(key=lambda ITEM: len(ITEM.parts), reverse=True)
     return DIRECTORIES
+
+
+# ------------------------------------------------------------------------------
+# This function builds a local file metadata index for first-run reconciliation.
+#
+# 1. "OUTPUT_DIR" is local backup root.
+#
+# Returns: Mapping of relative path to "(size, modified_epoch)" metadata.
+# ------------------------------------------------------------------------------
+def build_local_file_index(OUTPUT_DIR: Path) -> dict[str, tuple[int, float]]:
+    INDEX: dict[str, tuple[int, float]] = {}
+
+    for FILE_PATH in iter_local_files(OUTPUT_DIR):
+        try:
+            FILE_STAT = FILE_PATH.stat()
+        except OSError:
+            continue
+
+        INDEX[FILE_PATH.relative_to(OUTPUT_DIR).as_posix()] = (
+            FILE_STAT.st_size,
+            FILE_STAT.st_mtime,
+        )
+
+    return INDEX
+
+
+# ------------------------------------------------------------------------------
+# This function checks local-file metadata against remote entry metadata.
+#
+# 1. "ENTRY" is current remote file metadata.
+# 2. "LOCAL_METADATA" is optional local metadata tuple.
+#
+# Returns: True when local file can be treated as already synced.
+# ------------------------------------------------------------------------------
+def is_local_file_aligned_with_remote(
+    ENTRY: RemoteEntry,
+    LOCAL_METADATA: tuple[int, float] | None,
+) -> bool:
+    if LOCAL_METADATA is None:
+        return False
+
+    LOCAL_SIZE, LOCAL_MTIME = LOCAL_METADATA
+    if LOCAL_SIZE != ENTRY.size:
+        return False
+
+    REMOTE_MTIME = parse_remote_modified_epoch(ENTRY.modified)
+    if REMOTE_MTIME is None:
+        return False
+
+    return abs(LOCAL_MTIME - REMOTE_MTIME) <= RECONCILE_MTIME_TOLERANCE_SECONDS
+
+
+# ------------------------------------------------------------------------------
+# This function parses remote modified timestamps to UTC epoch seconds.
+#
+# 1. "RAW_VALUE" is remote timestamp string from iCloud metadata.
+#
+# Returns: Parsed epoch seconds, or None when parsing fails.
+# ------------------------------------------------------------------------------
+def parse_remote_modified_epoch(RAW_VALUE: str) -> float | None:
+    VALUE = RAW_VALUE.strip()
+    if not VALUE:
+        return None
+
+    NORMALISED = VALUE
+    if VALUE.endswith("Z"):
+        NORMALISED = VALUE[:-1] + "+00:00"
+
+    try:
+        PARSED = datetime.fromisoformat(NORMALISED)
+    except ValueError:
+        return None
+
+    if PARSED.tzinfo is None:
+        PARSED = PARSED.replace(tzinfo=timezone.utc)
+
+    return PARSED.timestamp()
 
 
 # ------------------------------------------------------------------------------
