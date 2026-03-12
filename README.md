@@ -52,4 +52,5 @@ python3 -m coverage report -m
   backup behaviour.
 - [TELEGRAM.md](TELEGRAM.md): command format, auth flow, and message outputs.
 - [OPERATIONS.md](OPERATIONS.md): runtime behaviour, one-shot mode,
-  performance, and safety-net behaviour.
+  performance, and safety-net behaviour (one-shot requires
+  `<SVC>_RESTART_POLICY=no`).

@@ -68,8 +68,10 @@ These are usually left as-is unless you have a specific reason to change them.
   integer from `1` to `16` (default `4`).
 - `<SVC>_RUN_ONCE`: run one backup pass and exit (`true`/`false`, default
   `false`).
+  - When `<SVC>_RUN_ONCE=true`, set `<SVC>_RESTART_POLICY=no`.
 - `<SVC>_RESTART_POLICY`: Compose restart policy for the service, for example
   `unless-stopped` or `no`.
+  - If `<SVC>_RESTART_POLICY` uses `unless-stopped` (or similar), one-shot containers restart after exit and loop.
 - `<SVC>_REAUTH_INTERVAL_DAYS`: reauthentication window (default `30`).
 
 ## Logging

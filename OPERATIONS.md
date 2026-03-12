@@ -30,6 +30,8 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 
 - Enable with `<SVC>_RUN_ONCE=true`.
 - Set `<SVC>_RESTART_POLICY=no` to avoid automatic restarts.
+- This pairing is required: one-shot with `unless-stopped` (or similar) will
+  restart the container after exit and loop.
 - Worker waits for Telegram `auth` or `reauth` commands when MFA or reauth is
   pending, then runs one backup attempt and exits.
 - While one-shot is running, heartbeat updates continue so container health
