@@ -43,8 +43,11 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 
 - Incremental sync uses `manifest.json` and skips unchanged files.
 - Changed-file downloads run in parallel automatically based on host CPU.
-- Worker count is internally bounded to `1..8`.
-- No extra tuning variables are required.
+- Worker count is internally bounded and can be overridden with
+  `SYNC_WORKERS`.
+- Download stream chunk size can be tuned with `DOWNLOAD_CHUNK_MIB`.
+- Directory traversal applies bounded retry/backoff for transient iCloud API
+  failures before treating a node as unavailable.
 
 ## Safety-net behaviour
 
