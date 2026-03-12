@@ -13,6 +13,8 @@ LOG_LEVELS = {
     "info": 20,
     "error": 30,
 }
+ANSI_RED = "\033[31m"
+ANSI_RESET = "\033[0m"
 
 
 # ------------------------------------------------------------------------------
@@ -65,8 +67,25 @@ def log_line(LOG_FILE: Path, LEVEL: str, MESSAGE: str) -> None:
     if not should_log(LEVEL):
         return
 
-    LINE = f"[{get_timestamp()}] [{LEVEL.upper()}] {MESSAGE}"
-    print(LINE, flush=True)
+    LEVEL_UPPER = LEVEL.upper()
+    LINE = f"[{get_timestamp()}] [{LEVEL_UPPER}] {MESSAGE}"
+    CONSOLE_LINE = format_console_line(LINE, LEVEL_UPPER)
+    print(CONSOLE_LINE, flush=True)
 
     with LOG_FILE.open("a", encoding="utf-8") as HANDLE:
         HANDLE.write(f"{LINE}\n")
+
+
+# ------------------------------------------------------------------------------
+# This function applies console-only formatting for selected log levels.
+#
+# 1. "LINE" is the plain log line.
+# 2. "LEVEL_UPPER" is uppercase severity token.
+#
+# Returns: Console display string.
+# ------------------------------------------------------------------------------
+def format_console_line(LINE: str, LEVEL_UPPER: str) -> str:
+    if LEVEL_UPPER != "ERROR":
+        return LINE
+
+    return f"{ANSI_RED}{LINE}{ANSI_RESET}"

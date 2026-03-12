@@ -17,6 +17,7 @@ from app.logger import log_line
 
 TRANSFER_PROGRESS_LOG_INTERVAL_SECONDS = 30.0
 TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS = 30.0
+PROGRESS_LOG_SEPARATOR = "------------------------------------------------------------"
 TRANSFER_RETRY_ATTEMPTS = 3
 TRANSFER_RETRY_BASE_DELAY_SECONDS = 1.0
 TRANSFER_RETRY_MAX_DELAY_SECONDS = 8.0
@@ -411,6 +412,11 @@ def perform_incremental_sync(
                     log_line(
                         LOG_FILE,
                         "debug",
+                        PROGRESS_LOG_SEPARATOR,
+                    )
+                    log_line(
+                        LOG_FILE,
+                        "debug",
                         "Transfer progress detail: "
                         f"completed={COMPLETED}/{len(TRANSFER_CANDIDATES)}, "
                         f"active={len(PENDING)}, "
@@ -419,6 +425,11 @@ def perform_incremental_sync(
                         f"skipped={SKIPPED}, "
                         f"errors={ERRORS}, "
                         f"elapsed_seconds={ELAPSED_SECONDS:.1f}",
+                    )
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        PROGRESS_LOG_SEPARATOR,
                     )
                     LAST_PROGRESS_LOG_EPOCH = NOW_EPOCH
     elif LOG_FILE is not None:
@@ -474,8 +485,18 @@ def list_entries_with_progress(
                 log_line(
                     LOG_FILE,
                     "debug",
+                    PROGRESS_LOG_SEPARATOR,
+                )
+                log_line(
+                    LOG_FILE,
+                    "debug",
                     "Traversal progress detail: "
                     f"elapsed_seconds={ELAPSED_SECONDS:.1f}",
+                )
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    PROGRESS_LOG_SEPARATOR,
                 )
 
 

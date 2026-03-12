@@ -25,6 +25,7 @@ from app.syncer import (
     is_retryable_transfer_error,
     needs_transfer,
     perform_incremental_sync,
+    PROGRESS_LOG_SEPARATOR,
 )
 
 
@@ -316,6 +317,7 @@ class TestSyncerHelpers(unittest.TestCase):
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
         self.assertTrue(any("Transfer progress detail:" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any(PROGRESS_LOG_SEPARATOR == LINE for LINE in DEBUG_LINES))
 
 # --------------------------------------------------------------------------
 # This test confirms long-running traversal emits in-run progress logs.
@@ -341,6 +343,7 @@ class TestSyncerHelpers(unittest.TestCase):
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
         self.assertTrue(any("Traversal progress detail:" in LINE for LINE in DEBUG_LINES))
+        self.assertTrue(any(PROGRESS_LOG_SEPARATOR == LINE for LINE in DEBUG_LINES))
 
 # --------------------------------------------------------------------------
 # This test confirms failed transfers preserve existing manifest metadata.

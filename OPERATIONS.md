@@ -21,6 +21,9 @@
   lines every 30 seconds so long backups remain observable.
 - During traversal/listing, debug logs include periodic in-run progress
   lines every 30 seconds while iCloud entry discovery is still running.
+- Progress updates are wrapped with separator lines in debug output for easier
+  visual scanning in container logs.
+- Error lines are coloured red in container stdout; file logs remain plain text.
 
 ## Privilege model
 

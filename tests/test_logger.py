@@ -104,9 +104,27 @@ class TestLogger(unittest.TestCase):
                         logger.log_line(LOG_FILE, "error", "Visible error.")
 
             EXPECTED = "[2026-03-09 12:34:56 UTC] [ERROR] Visible error."
-            PRINT.assert_called_once_with(EXPECTED, flush=True)
+            PRINT.assert_called_once_with(
+                f"{logger.ANSI_RED}{EXPECTED}{logger.ANSI_RESET}",
+                flush=True,
+            )
             CONTENTS = LOG_FILE.read_text(encoding="utf-8").strip()
             self.assertEqual(CONTENTS, EXPECTED)
+
+# --------------------------------------------------------------------------
+# This test confirms console formatting leaves non-error lines unchanged.
+# --------------------------------------------------------------------------
+    def test_format_console_line_returns_plain_line_for_info(self) -> None:
+        LINE = "[2026-03-09 12:34:56 UTC] [INFO] Visible info."
+        self.assertEqual(logger.format_console_line(LINE, "INFO"), LINE)
+
+# --------------------------------------------------------------------------
+# This test confirms console formatting wraps error lines with ANSI red.
+# --------------------------------------------------------------------------
+    def test_format_console_line_wraps_error_line_in_red(self) -> None:
+        LINE = "[2026-03-09 12:34:56 UTC] [ERROR] Visible error."
+        RESULT = logger.format_console_line(LINE, "ERROR")
+        self.assertEqual(RESULT, f"{logger.ANSI_RED}{LINE}{logger.ANSI_RESET}")
 
 # --------------------------------------------------------------------------
 # This test confirms invalid LOG_LEVEL values fall back to info threshold.
