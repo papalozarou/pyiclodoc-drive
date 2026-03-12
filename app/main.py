@@ -575,7 +575,7 @@ def format_average_speed(TRANSFERRED_BYTES: int, DURATION_SECONDS: int) -> str:
 # ------------------------------------------------------------------------------
 def format_schedule_description(CONFIG: AppConfig, TRIGGER: str) -> str:
     if TRIGGER == "one-shot":
-        return "One-shot run – configured schedule is ignored."
+        return "One-shot run – configured schedule is ignored"
 
     if CONFIG.schedule_mode == "interval":
         return f"Every {CONFIG.schedule_interval_minutes} minutes"
