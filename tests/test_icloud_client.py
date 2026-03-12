@@ -328,6 +328,38 @@ class TestICloudClientTraversal(unittest.TestCase):
             self.assertEqual(len(RESULT["dirs"]), 1)
             self.assertEqual(len(RESULT["files"]), 1)
 
+    def test_node_dir_retries_transient_dir_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            NODE = Mock()
+            NODE.dir.side_effect = [
+                RuntimeError("transient"),
+                RuntimeError("transient"),
+                ["docs", "a.txt"],
+            ]
+
+            with patch("app.icloud_client.time.sleep") as SLEEP:
+                RESULT = CLIENT._node_dir(NODE)
+
+            self.assertEqual(RESULT["names"], ["docs", "a.txt"])
+            self.assertEqual(NODE.dir.call_count, 3)
+            self.assertEqual(SLEEP.call_count, 2)
+
+    def test_node_dir_does_not_retry_non_retryable_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            NODE = Mock()
+            NODE.dir.side_effect = ValueError("bad payload")
+
+            with patch("app.icloud_client.time.sleep") as SLEEP:
+                RESULT = CLIENT._node_dir(NODE)
+
+            self.assertEqual(RESULT, {"dirs": [], "files": [], "names": []})
+            self.assertEqual(NODE.dir.call_count, 1)
+            self.assertEqual(SLEEP.call_count, 0)
+
     def test_entries_from_files_supports_filename_and_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)

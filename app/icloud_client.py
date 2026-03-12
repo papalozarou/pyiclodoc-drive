@@ -9,10 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Any
 import shutil
+import time
 
 from pyicloud import PyiCloudService
 
 from app.config import AppConfig
+
+DIR_RETRY_ATTEMPTS = 4
+DIR_RETRY_BASE_DELAY_SECONDS = 0.05
+DIR_RETRY_MAX_DELAY_SECONDS = 0.40
 
 
 # ------------------------------------------------------------------------------
@@ -197,6 +202,43 @@ class ICloudDriveClient:
         return self._walk_node(DRIVE_ROOT, "")
 
 # --------------------------------------------------------------------------
+# This function reads directory payload with bounded retries for transient
+# failures.
+#
+# 1. "NODE" is the current drive node.
+#
+# Returns: Directory payload when available, otherwise None.
+# --------------------------------------------------------------------------
+    def _read_dir_payload_with_retry(self, NODE: Any) -> Any | None:
+        ATTEMPT = 0
+
+        while ATTEMPT < DIR_RETRY_ATTEMPTS:
+            try:
+                return NODE.dir()
+            except (AttributeError, NotADirectoryError, TypeError, ValueError):
+                return None
+            except Exception:
+                ATTEMPT += 1
+
+                if ATTEMPT >= DIR_RETRY_ATTEMPTS:
+                    return None
+
+                time.sleep(self._retry_delay_seconds(ATTEMPT))
+
+        return None
+
+# --------------------------------------------------------------------------
+# This function computes exponential retry delay for directory reads.
+#
+# 1. "ATTEMPT" is one-based retry attempt index.
+#
+# Returns: Delay in seconds bounded by configured retry limits.
+# --------------------------------------------------------------------------
+    def _retry_delay_seconds(self, ATTEMPT: int) -> float:
+        DELAY_SECONDS = DIR_RETRY_BASE_DELAY_SECONDS * (2 ** (ATTEMPT - 1))
+        return min(DELAY_SECONDS, DIR_RETRY_MAX_DELAY_SECONDS)
+
+# --------------------------------------------------------------------------
 # This function recursively walks a drive node and accumulates files
 # and directories.
 #
@@ -230,9 +272,9 @@ class ICloudDriveClient:
 # Returns: Dictionary containing "dirs" and "files" lists.
 # --------------------------------------------------------------------------
     def _node_dir(self, NODE: Any) -> dict[str, Any]:
-        try:
-            PAYLOAD = NODE.dir()
-        except (AttributeError, NotADirectoryError, TypeError, ValueError):
+        PAYLOAD = self._read_dir_payload_with_retry(NODE)
+
+        if PAYLOAD is None:
             return {"dirs": [], "files": [], "names": []}
 
         return self._normalise_dir_payload(PAYLOAD)
@@ -385,9 +427,9 @@ class ICloudDriveClient:
         if getattr(CHILD, "isFolder", None) is False:
             return False
 
-        try:
-            PAYLOAD = CHILD.dir()
-        except (AttributeError, NotADirectoryError, TypeError, ValueError):
+        PAYLOAD = self._read_dir_payload_with_retry(CHILD)
+
+        if PAYLOAD is None:
             return False
 
         return isinstance(PAYLOAD, (dict, list))
