@@ -15,6 +15,8 @@
   diagnostics.
 - During transfer execution, debug logs include periodic in-run progress
   lines every 30 seconds so long backups remain observable.
+- During traversal/listing, debug logs include periodic in-run progress
+  lines every 30 seconds while iCloud entry discovery is still running.
 
 ## Privilege model
 

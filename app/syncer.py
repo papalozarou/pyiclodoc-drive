@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, TimeoutError, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from app.icloud_client import ICloudDriveClient, RemoteEntry
 from app.logger import log_line
 
 TRANSFER_PROGRESS_LOG_INTERVAL_SECONDS = 30.0
+TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS = 30.0
 TRANSFER_RETRY_ATTEMPTS = 3
 TRANSFER_RETRY_BASE_DELAY_SECONDS = 1.0
 TRANSFER_RETRY_MAX_DELAY_SECONDS = 8.0
@@ -231,7 +232,11 @@ def perform_incremental_sync(
     LOG_FILE: Path | None = None,
 ) -> tuple[SyncResult, dict[str, dict[str, Any]]]:
     TRAVERSAL_STARTED_EPOCH = time.monotonic()
-    ENTRIES = CLIENT.list_entries()
+    ENTRIES = list_entries_with_progress(
+        CLIENT,
+        LOG_FILE,
+        TRAVERSAL_STARTED_EPOCH,
+    )
     TRAVERSAL_DURATION_SECONDS = time.monotonic() - TRAVERSAL_STARTED_EPOCH
     FILES = [ENTRY for ENTRY in ENTRIES if not ENTRY.is_dir]
     DIRECTORIES = [ENTRY for ENTRY in ENTRIES if ENTRY.is_dir]
@@ -407,6 +412,41 @@ def perform_incremental_sync(
         SKIPPED,
         ERRORS,
     ), NEW_MANIFEST
+
+
+# ------------------------------------------------------------------------------
+# This function lists remote entries and emits traversal progress diagnostics.
+#
+# 1. "CLIENT" is the active iCloud API wrapper.
+# 2. "LOG_FILE" is optional log file path.
+# 3. "STARTED_EPOCH" is traversal start timestamp.
+#
+# Returns: Flat list of discovered remote entries.
+# ------------------------------------------------------------------------------
+def list_entries_with_progress(
+    CLIENT: ICloudDriveClient,
+    LOG_FILE: Path | None,
+    STARTED_EPOCH: float,
+) -> list[RemoteEntry]:
+    TIMEOUT_SECONDS = max(TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS, 0.01)
+
+    with ThreadPoolExecutor(max_workers=1) as EXECUTOR:
+        FUTURE = EXECUTOR.submit(CLIENT.list_entries)
+
+        while True:
+            try:
+                return FUTURE.result(timeout=TIMEOUT_SECONDS)
+            except TimeoutError:
+                if LOG_FILE is None:
+                    continue
+
+                ELAPSED_SECONDS = time.monotonic() - STARTED_EPOCH
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    "Traversal progress detail: "
+                    f"elapsed_seconds={ELAPSED_SECONDS:.1f}",
+                )
 
 
 # ------------------------------------------------------------------------------

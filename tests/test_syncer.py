@@ -8,6 +8,7 @@
 
 from pathlib import Path
 import tempfile
+import time
 import unittest
 
 from dataclasses import dataclass
@@ -294,6 +295,31 @@ class TestSyncerHelpers(unittest.TestCase):
 
         DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
         self.assertTrue(any("Transfer progress detail:" in LINE for LINE in DEBUG_LINES))
+
+# --------------------------------------------------------------------------
+# This test confirms long-running traversal emits in-run progress logs.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_emits_traversal_progress_logs(self) -> None:
+        class SlowClient:
+            def list_entries(self):
+                time.sleep(0.05)
+                return []
+
+            def download_file(self, REMOTE_PATH, LOCAL_PATH):
+                _ = REMOTE_PATH
+                _ = LOCAL_PATH
+                return True
+
+        CLIENT = SlowClient()
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "worker.log"
+            with patch("app.syncer.TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS", 0.01):
+                with patch("app.syncer.log_line") as LOG_LINE:
+                    perform_incremental_sync(CLIENT, Path(TMPDIR), {}, 0, LOG_FILE)
+
+        DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
+        self.assertTrue(any("Traversal progress detail:" in LINE for LINE in DEBUG_LINES))
 
 # --------------------------------------------------------------------------
 # This test confirms failed transfers preserve existing manifest metadata.
