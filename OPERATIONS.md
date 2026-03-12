@@ -15,6 +15,8 @@
   diagnostics.
 - At `LOG_LEVEL=info`, worker logs include stage boundary markers for
   traversal and transfer start/finish so run progress is still visible.
+- Traversal can take a long time for large iCloud libraries, and transfer can
+  also run for extended periods when many changed files are queued.
 - During transfer execution, debug logs include periodic in-run progress
   lines every 30 seconds so long backups remain observable.
 - During traversal/listing, debug logs include periodic in-run progress
