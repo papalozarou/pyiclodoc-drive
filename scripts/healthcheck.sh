@@ -9,7 +9,7 @@ HEARTBEAT_FILE="${HEARTBEAT_FILE:-/logs/heartbeat.txt}"
 MAX_AGE_SECONDS="${HEALTHCHECK_MAX_AGE_SECONDS:-900}"
 
 command -v parallel >/dev/null 2>&1
-parallel --wait "1s" --cmd "test -f \"$HEARTBEAT_FILE\"" >/dev/null 2>&1
+parallel "test -f \"$HEARTBEAT_FILE\"" >/dev/null 2>&1
 
 [ -f "$HEARTBEAT_FILE" ]
 
