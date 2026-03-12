@@ -257,7 +257,7 @@ class TestSyncerHelpers(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as TMPDIR:
-            LOG_FILE = Path(TMPDIR) / "worker.log"
+            LOG_FILE = Path(TMPDIR) / "iclouddd-worker.log"
             with patch("app.syncer.log_line") as LOG_LINE:
                 perform_incremental_sync(CLIENT, Path(TMPDIR), MANIFEST, 0, LOG_FILE)
 
@@ -282,7 +282,7 @@ class TestSyncerHelpers(unittest.TestCase):
         CLIENT = FakeClient(ENTRIES, {"docs/new.txt": True})
 
         with tempfile.TemporaryDirectory() as TMPDIR:
-            LOG_FILE = Path(TMPDIR) / "worker.log"
+            LOG_FILE = Path(TMPDIR) / "iclouddd-worker.log"
             with patch("app.syncer.log_line") as LOG_LINE:
                 perform_incremental_sync(CLIENT, Path(TMPDIR), {}, 0, LOG_FILE)
 
@@ -314,7 +314,7 @@ class TestSyncerHelpers(unittest.TestCase):
             return {FUTURE}, set()
 
         with tempfile.TemporaryDirectory() as TMPDIR:
-            LOG_FILE = Path(TMPDIR) / "worker.log"
+            LOG_FILE = Path(TMPDIR) / "iclouddd-worker.log"
             with patch("app.syncer.wait", side_effect=fake_wait):
                 with patch("app.syncer.TRANSFER_PROGRESS_LOG_INTERVAL_SECONDS", 0.0):
                     with patch("app.syncer.log_line") as LOG_LINE:
@@ -341,7 +341,7 @@ class TestSyncerHelpers(unittest.TestCase):
         CLIENT = SlowClient()
 
         with tempfile.TemporaryDirectory() as TMPDIR:
-            LOG_FILE = Path(TMPDIR) / "worker.log"
+            LOG_FILE = Path(TMPDIR) / "iclouddd-worker.log"
             with patch("app.syncer.TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS", 0.01):
                 with patch("app.syncer.log_line") as LOG_LINE:
                     perform_incremental_sync(CLIENT, Path(TMPDIR), {}, 0, LOG_FILE)

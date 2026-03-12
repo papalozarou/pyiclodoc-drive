@@ -65,9 +65,9 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         output_dir=Path("/tmp/output"),
         config_dir=Path("/tmp/config"),
         logs_dir=Path("/tmp/logs"),
-        manifest_path=Path("/tmp/config/manifest.json"),
-        auth_state_path=Path("/tmp/config/auth_state.json"),
-        heartbeat_path=Path("/tmp/logs/heartbeat.txt"),
+        manifest_path=Path("/tmp/config/iclouddd-manifest.json"),
+        auth_state_path=Path("/tmp/config/iclouddd-auth_state.json"),
+        heartbeat_path=Path("/tmp/logs/iclouddd-heartbeat.txt"),
         cookie_dir=Path("/tmp/config/cookies"),
         session_dir=Path("/tmp/config/session"),
         icloudpd_compat_dir=Path("/tmp/config/icloudpd"),
@@ -99,7 +99,7 @@ class TestMainReminderLogic(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_process_reauth_reminders_sets_alert5(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            STATE_PATH = Path(TMPDIR) / "auth_state.json"
+            STATE_PATH = Path(TMPDIR) / "iclouddd-auth_state.json"
             TELEGRAM = TelegramConfig(bot_token="", chat_id="")
             STATE = AuthState(
                 last_auth_utc=iso_days_ago(25),
@@ -119,7 +119,7 @@ class TestMainReminderLogic(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_process_reauth_reminders_sets_prompt2(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            STATE_PATH = Path(TMPDIR) / "auth_state.json"
+            STATE_PATH = Path(TMPDIR) / "iclouddd-auth_state.json"
             TELEGRAM = TelegramConfig(bot_token="", chat_id="")
             STATE = AuthState(
                 last_auth_utc=iso_days_ago(29),

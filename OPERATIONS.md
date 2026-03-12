@@ -4,7 +4,7 @@
 
 - Compose `init: true` is required by the provided service definitions.
 - Health checks use `parallel` from the microcheck toolbox image.
-- A background heartbeat updater refreshes `/logs/heartbeat.txt` every 30
+- A background heartbeat updater refreshes `/logs/iclouddd-heartbeat.txt` every 30
   seconds in both recurring and one-shot execution paths.
 - Telegram commands are ignored unless they come from `H_TGM_CHAT_ID`.
 - Entrypoint starts as root only to read Docker secret files, then drops to
@@ -24,6 +24,8 @@
 - Progress updates are wrapped with separator lines in debug output for easier
   visual scanning in container logs.
 - Error lines are coloured red in container stdout; file logs remain plain text.
+- Worker logs rotate daily and at size threshold, are compressed to
+  `iclouddd-worker.*.log.gz`, and are pruned by configured retention days.
 
 ## Privilege model
 
@@ -54,7 +56,7 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 
 ## Transfer performance
 
-- Incremental sync uses `manifest.json` and skips unchanged files.
+- Incremental sync uses `iclouddd-manifest.json` and skips unchanged files.
 - On first run with an empty manifest, worker reconciles existing local files
   under `/output` against remote metadata (size and modified time) and seeds
   manifest entries without re-downloading matched files.

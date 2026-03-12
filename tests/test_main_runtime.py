@@ -65,9 +65,9 @@ def build_config_for_runtime(TMPDIR: str) -> AppConfig:
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,
         logs_dir=LOGS_DIR,
-        manifest_path=CONFIG_DIR / "manifest.json",
-        auth_state_path=CONFIG_DIR / "auth_state.json",
-        heartbeat_path=LOGS_DIR / "heartbeat.txt",
+        manifest_path=CONFIG_DIR / "iclouddd-manifest.json",
+        auth_state_path=CONFIG_DIR / "iclouddd-auth_state.json",
+        heartbeat_path=LOGS_DIR / "iclouddd-heartbeat.txt",
         cookie_dir=CONFIG_DIR / "cookies",
         session_dir=CONFIG_DIR / "session",
         icloudpd_compat_dir=CONFIG_DIR / "icloudpd",
@@ -124,7 +124,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_update_heartbeat_creates_file(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            HEARTBEAT_PATH = Path(TMPDIR) / "logs" / "heartbeat.txt"
+            HEARTBEAT_PATH = Path(TMPDIR) / "logs" / "iclouddd-heartbeat.txt"
             update_heartbeat(HEARTBEAT_PATH)
             self.assertTrue(HEARTBEAT_PATH.exists())
 
@@ -133,7 +133,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # a stop event.
 # --------------------------------------------------------------------------
     def test_start_heartbeat_updater_starts_daemon_thread(self) -> None:
-        HEARTBEAT_PATH = Path("/tmp/heartbeat.txt")
+        HEARTBEAT_PATH = Path("/tmp/iclouddd-heartbeat.txt")
 
         with patch("app.main.threading.Thread") as THREAD:
             THREAD_INSTANCE = Mock()
@@ -180,7 +180,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_attempt_auth_success_path(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            AUTH_STATE_PATH = Path(TMPDIR) / "auth_state.json"
+            AUTH_STATE_PATH = Path(TMPDIR) / "iclouddd-auth_state.json"
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", True, True, "prompt2")
             CLIENT = Mock()
@@ -212,7 +212,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_attempt_auth_mfa_required_path(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            AUTH_STATE_PATH = Path(TMPDIR) / "auth_state.json"
+            AUTH_STATE_PATH = Path(TMPDIR) / "iclouddd-auth_state.json"
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
             CLIENT = Mock()
@@ -241,7 +241,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_attempt_auth_failure_path(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
-            AUTH_STATE_PATH = Path(TMPDIR) / "auth_state.json"
+            AUTH_STATE_PATH = Path(TMPDIR) / "iclouddd-auth_state.json"
             TELEGRAM = TelegramConfig("token", "12345")
             AUTH_STATE = AuthState("1970-01-01T00:00:00+00:00", False, False, "none")
             CLIENT = Mock()
@@ -270,8 +270,8 @@ class TestMainRuntimeHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
-            LOG_FILE = CONFIG.logs_dir / "worker.log"
-            (CONFIG.config_dir / "safety_net_done.flag").write_text("ok\n", encoding="utf-8")
+            LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
+            (CONFIG.config_dir / "iclouddd-safety_net_done.flag").write_text("ok\n", encoding="utf-8")
 
             with patch("app.main.run_first_time_safety_net") as RUN_NET:
                 RESULT = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
@@ -286,8 +286,8 @@ class TestMainRuntimeHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
-            LOG_FILE = CONFIG.logs_dir / "worker.log"
-            BLOCKED = CONFIG.config_dir / "safety_net_blocked.flag"
+            LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
+            BLOCKED = CONFIG.config_dir / "iclouddd-safety_net_blocked.flag"
             BLOCKED.write_text("blocked\n", encoding="utf-8")
             RESULT = SimpleNamespace(
                 should_block=False,
@@ -301,7 +301,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
                     RETURNED = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
 
             self.assertTrue(RETURNED)
-            self.assertTrue((CONFIG.config_dir / "safety_net_done.flag").exists())
+            self.assertTrue((CONFIG.config_dir / "iclouddd-safety_net_done.flag").exists())
             self.assertFalse(BLOCKED.exists())
 
 # --------------------------------------------------------------------------
@@ -311,7 +311,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
-            LOG_FILE = CONFIG.logs_dir / "worker.log"
+            LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
             RESULT = SimpleNamespace(
                 should_block=True,
                 mismatched_samples=["/output/file1"],
@@ -325,7 +325,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
                         RETURNED = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
 
             self.assertFalse(RETURNED)
-            self.assertTrue((CONFIG.config_dir / "safety_net_blocked.flag").exists())
+            self.assertTrue((CONFIG.config_dir / "iclouddd-safety_net_blocked.flag").exists())
             self.assertIn("Safety net blocked", NOTIFY.call_args[0][1])
             self.assertIn(
                 "Expected: uid 1000, gid 1000",
@@ -357,7 +357,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
-            LOG_FILE = CONFIG.logs_dir / "worker.log"
+            LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
             CLIENT = Mock()
             SUMMARY = SimpleNamespace(
                 transferred_files=2,
@@ -402,7 +402,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
-            LOG_FILE = CONFIG.logs_dir / "worker.log"
+            LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
             CLIENT = Mock()
             SUMMARY = SimpleNamespace(
                 transferred_files=0,

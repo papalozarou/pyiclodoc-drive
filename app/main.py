@@ -707,8 +707,8 @@ def attempt_auth(
 # Returns: True when backup can proceed; otherwise False.
 # ------------------------------------------------------------------------------
 def enforce_safety_net(CONFIG: AppConfig, TELEGRAM: TelegramConfig, LOG_FILE: Path) -> bool:
-    DONE_MARKER = CONFIG.config_dir / "safety_net_done.flag"
-    BLOCKED_MARKER = CONFIG.config_dir / "safety_net_blocked.flag"
+    DONE_MARKER = CONFIG.config_dir / "iclouddd-safety_net_done.flag"
+    BLOCKED_MARKER = CONFIG.config_dir / "iclouddd-safety_net_blocked.flag"
 
     if DONE_MARKER.exists():
         return True
@@ -996,7 +996,7 @@ def handle_command(
         CONFIG.icloud_email,
         ARGS,
     )
-    log_line(CONFIG.logs_dir / "worker.log", "info", f"Auth command result: {DETAILS}")
+    log_line(CONFIG.logs_dir / "iclouddd-worker.log", "info", f"Auth command result: {DETAILS}")
     return NEW_STATE, NEW_AUTH, False
 
 
@@ -1058,7 +1058,7 @@ def wait_for_one_shot_auth(
 # ------------------------------------------------------------------------------
 def main() -> int:
     CONFIG = load_config()
-    LOG_FILE = CONFIG.logs_dir / "worker.log"
+    LOG_FILE = CONFIG.logs_dir / "iclouddd-worker.log"
     TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
     HEARTBEAT_STOP_EVENT: threading.Event | None = None
     STOP_STATUS = "Last status: Worker process exited."

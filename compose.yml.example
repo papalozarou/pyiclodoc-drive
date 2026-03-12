@@ -15,7 +15,10 @@ x-env:
   TZ: ${H_TZ}
   PUID: ${C_UID}
   PGID: ${C_GID}
-  LOG_LEVEL: info
+  LOG_LEVEL: ${C_LOG_LEVEL}
+  LOG_ROTATE_DAILY: ${C_LOG_ROTATE_DAILY}
+  LOG_ROTATE_MAX_MIB: ${C_LOG_ROTATE_MAX_MIB}
+  LOG_ROTATE_KEEP_DAYS: ${C_LOG_ROTATE_KEEP_DAYS}
 
 # ------------------------------------------------------------------------------
 # Docker extension fields for default security options that disallow privilege

@@ -50,7 +50,7 @@ class TestScripts(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as TMPDIR:
             ROOT_DIR = Path(TMPDIR)
-            HEARTBEAT_PATH = ROOT_DIR / "heartbeat.txt"
+            HEARTBEAT_PATH = ROOT_DIR / "iclouddd-heartbeat.txt"
             HEARTBEAT_PATH.write_text("ok\n", encoding="utf-8")
 
             BIN_DIR = ROOT_DIR / "bin"
@@ -83,7 +83,7 @@ class TestScripts(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as TMPDIR:
             ROOT_DIR = Path(TMPDIR)
-            HEARTBEAT_PATH = ROOT_DIR / "missing-heartbeat.txt"
+            HEARTBEAT_PATH = ROOT_DIR / "missing-iclouddd-heartbeat.txt"
 
             BIN_DIR = ROOT_DIR / "bin"
             BIN_DIR.mkdir(parents=True, exist_ok=True)
