@@ -207,7 +207,7 @@ class TestMainValidation(unittest.TestCase):
         ERRORS = validate_config(CONFIG)
 
         self.assertIn(
-            "SYNC_WORKERS must be auto or an integer between 1 and 16.",
+            "SYNC_DOWNLOAD_WORKERS must be auto or an integer between 1 and 16.",
             ERRORS,
         )
 
@@ -221,7 +221,7 @@ class TestMainValidation(unittest.TestCase):
         ERRORS = validate_config(CONFIG)
 
         self.assertIn(
-            "TRAVERSAL_WORKERS must be an integer between 1 and 8.",
+            "SYNC_TRAVERSAL_WORKERS must be an integer between 1 and 8.",
             ERRORS,
         )
 
@@ -235,7 +235,7 @@ class TestMainValidation(unittest.TestCase):
         ERRORS = validate_config(CONFIG)
 
         self.assertIn(
-            "DOWNLOAD_CHUNK_MIB must be an integer between 1 and 16.",
+            "SYNC_DOWNLOAD_CHUNK_MIB must be an integer between 1 and 16.",
             ERRORS,
         )
 

@@ -105,13 +105,13 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
         )
 
     if CONFIG.traversal_workers < 1 or CONFIG.traversal_workers > 8:
-        ERRORS.append("TRAVERSAL_WORKERS must be an integer between 1 and 8.")
+        ERRORS.append("SYNC_TRAVERSAL_WORKERS must be an integer between 1 and 8.")
 
     if CONFIG.sync_workers < 0 or CONFIG.sync_workers > 16:
-        ERRORS.append("SYNC_WORKERS must be auto or an integer between 1 and 16.")
+        ERRORS.append("SYNC_DOWNLOAD_WORKERS must be auto or an integer between 1 and 16.")
 
     if CONFIG.download_chunk_mib < 1 or CONFIG.download_chunk_mib > 16:
-        ERRORS.append("DOWNLOAD_CHUNK_MIB must be an integer between 1 and 16.")
+        ERRORS.append("SYNC_DOWNLOAD_CHUNK_MIB must be an integer between 1 and 16.")
 
     return ERRORS
 

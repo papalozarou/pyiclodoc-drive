@@ -52,13 +52,13 @@ def get_auto_worker_count() -> int:
 # ------------------------------------------------------------------------------
 # This function resolves effective transfer worker count.
 #
-# 1. "SYNC_WORKERS" uses 0 for auto mode and positive values for overrides.
+# 1. "SYNC_DOWNLOAD_WORKERS" uses 0 for auto mode and positive values for overrides.
 #
 # Returns: Bounded worker count for concurrent file download tasks.
 # ------------------------------------------------------------------------------
-def get_transfer_worker_count(SYNC_WORKERS: int) -> int:
-    if SYNC_WORKERS > 0:
-        return min(max(SYNC_WORKERS, 1), 16)
+def get_transfer_worker_count(SYNC_DOWNLOAD_WORKERS: int) -> int:
+    if SYNC_DOWNLOAD_WORKERS > 0:
+        return min(max(SYNC_DOWNLOAD_WORKERS, 1), 16)
 
     return get_auto_worker_count()
 
@@ -208,7 +208,7 @@ def perform_incremental_sync(
     CLIENT: ICloudDriveClient,
     OUTPUT_DIR: Path,
     MANIFEST: dict[str, dict[str, Any]],
-    SYNC_WORKERS: int = 0,
+    SYNC_DOWNLOAD_WORKERS: int = 0,
     LOG_FILE: Path | None = None,
 ) -> tuple[SyncResult, dict[str, dict[str, Any]]]:
     TRAVERSAL_STARTED_EPOCH = time.monotonic()
@@ -269,12 +269,12 @@ def perform_incremental_sync(
         )
 
     if TRANSFER_CANDIDATES:
-        WORKER_COUNT = get_transfer_worker_count(SYNC_WORKERS)
+        WORKER_COUNT = get_transfer_worker_count(SYNC_DOWNLOAD_WORKERS)
         if LOG_FILE is not None:
             log_line(
                 LOG_FILE,
                 "debug",
-                f"Transfer execution detail: workers={WORKER_COUNT}, sync_workers={SYNC_WORKERS}",
+                f"Transfer execution detail: workers={WORKER_COUNT}, sync_workers={SYNC_DOWNLOAD_WORKERS}",
             )
 
         with ThreadPoolExecutor(max_workers=WORKER_COUNT) as EXECUTOR:

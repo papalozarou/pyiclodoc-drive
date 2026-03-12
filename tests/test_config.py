@@ -76,9 +76,9 @@ class TestConfigLoad(unittest.TestCase):
                 "SCHEDULE_WEEKDAYS": "Thursday",
                 "SCHEDULE_MONTHLY_WEEK": "LAST",
                 "SCHEDULE_INTERVAL_MINUTES": "90",
-                "TRAVERSAL_WORKERS": "4",
-                "SYNC_WORKERS": "12",
-                "DOWNLOAD_CHUNK_MIB": "8",
+                "SYNC_TRAVERSAL_WORKERS": "4",
+                "SYNC_DOWNLOAD_WORKERS": "12",
+                "SYNC_DOWNLOAD_CHUNK_MIB": "8",
                 "REAUTH_INTERVAL_DAYS": "45",
                 "SAFETY_NET_SAMPLE_SIZE": "300",
             }
@@ -111,9 +111,9 @@ class TestConfigLoad(unittest.TestCase):
             BASE_ENV = build_base_env(TMPDIR)
             INVALIDS = {
                 "SCHEDULE_INTERVAL_MINUTES": "abc",
-                "TRAVERSAL_WORKERS": "zero",
-                "SYNC_WORKERS": "many",
-                "DOWNLOAD_CHUNK_MIB": "huge",
+                "SYNC_TRAVERSAL_WORKERS": "zero",
+                "SYNC_DOWNLOAD_WORKERS": "many",
+                "SYNC_DOWNLOAD_CHUNK_MIB": "huge",
                 "REAUTH_INTERVAL_DAYS": "-1",
                 "SAFETY_NET_SAMPLE_SIZE": "10.5",
             }
@@ -133,7 +133,7 @@ class TestConfigLoad(unittest.TestCase):
     def test_load_config_sync_workers_auto_mode(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             BASE_ENV = build_base_env(TMPDIR)
-            with patch.dict(os.environ, BASE_ENV | {"SYNC_WORKERS": "auto"}, clear=True):
+            with patch.dict(os.environ, BASE_ENV | {"SYNC_DOWNLOAD_WORKERS": "auto"}, clear=True):
                 CONFIG = load_config()
 
         self.assertEqual(CONFIG.sync_workers, 0)

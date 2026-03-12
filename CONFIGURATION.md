@@ -50,14 +50,6 @@ These are usually left as-is unless you have a specific reason to change them.
 
 - `<SVC>_SCHEDULE_MODE`: `interval`, `daily`, `weekly`, `twice_weekly`,
   or `monthly` (default `interval`).
-- `<SVC>_SCHEDULE_INTERVAL_MINUTES`: interval run spacing in minutes (default
-  `1440`).
-- `<SVC>_TRAVERSAL_WORKERS`: directory traversal worker count, as an integer
-  from `1` to `8` (default `1`, serial traversal).
-- `<SVC>_SYNC_WORKERS`: transfer worker override, using `auto` or an integer
-  from `1` to `16` (default `auto`).
-- `<SVC>_DOWNLOAD_CHUNK_MIB`: streamed download chunk size in MiB, as an
-  integer from `1` to `16` (default `4`).
 - `<SVC>_SCHEDULE_BACKUP_TIME`: local run time in `HH:MM` 24-hour format
   (default `02:00`).
 - `<SVC>_SCHEDULE_WEEKDAYS`: comma-separated weekday names.
@@ -66,6 +58,14 @@ These are usually left as-is unless you have a specific reason to change them.
   `monday,thursday`.
 - `<SVC>_SCHEDULE_MONTHLY_WEEK`: one of `first`, `second`, `third`, `fourth`,
   `last`.
+- `<SVC>_SCHEDULE_INTERVAL_MINUTES`: interval run spacing in minutes (default
+  `1440`).
+- `<SVC>_SYNC_TRAVERSAL_WORKERS`: directory traversal worker count, as an integer
+  from `1` to `8` (default `1`, serial traversal).
+- `<SVC>_SYNC_DOWNLOAD_WORKERS`: download worker override, using `auto` or an integer
+  from `1` to `16` (default `auto`).
+- `<SVC>_SYNC_DOWNLOAD_CHUNK_MIB`: streamed download chunk size in MiB, as an
+  integer from `1` to `16` (default `4`).
 - `<SVC>_RUN_ONCE`: run one backup pass and exit (`true`/`false`, default
   `false`).
 - `<SVC>_RESTART_POLICY`: Compose restart policy for the service, for example
