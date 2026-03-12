@@ -42,6 +42,8 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 ## Transfer performance
 
 - Incremental sync uses `manifest.json` and skips unchanged files.
+- Directory traversal can run in bounded parallel mode with
+  `TRAVERSAL_WORKERS`.
 - Changed-file downloads run in parallel automatically based on host CPU.
 - Worker count is internally bounded and can be overridden with
   `SYNC_WORKERS`.

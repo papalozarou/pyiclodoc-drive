@@ -57,6 +57,7 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         schedule_weekdays="monday,thursday",
         schedule_monthly_week="first",
         schedule_interval_minutes=1440,
+        traversal_workers=1,
         sync_workers=0,
         download_chunk_mib=4,
         reauth_interval_days=30,
@@ -207,6 +208,20 @@ class TestMainValidation(unittest.TestCase):
 
         self.assertIn(
             "SYNC_WORKERS must be auto or an integer between 1 and 16.",
+            ERRORS,
+        )
+
+# --------------------------------------------------------------------------
+# This test confirms traversal worker validation rejects out-of-range
+# values.
+# --------------------------------------------------------------------------
+    def test_validate_config_rejects_out_of_range_traversal_workers(self) -> None:
+        CONFIG = build_config(traversal_workers=0)
+
+        ERRORS = validate_config(CONFIG)
+
+        self.assertIn(
+            "TRAVERSAL_WORKERS must be an integer between 1 and 8.",
             ERRORS,
         )
 

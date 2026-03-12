@@ -26,6 +26,7 @@ class AppConfig:
     schedule_weekdays: str
     schedule_monthly_week: str
     schedule_interval_minutes: int
+    traversal_workers: int
     sync_workers: int
     download_chunk_mib: int
     reauth_interval_days: int
@@ -152,6 +153,7 @@ def load_config() -> AppConfig:
         schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
         schedule_interval_minutes=env_int("SCHEDULE_INTERVAL_MINUTES", 1440),
+        traversal_workers=env_int("TRAVERSAL_WORKERS", 1),
         sync_workers=env_workers("SYNC_WORKERS", 0),
         download_chunk_mib=env_int("DOWNLOAD_CHUNK_MIB", 4),
         reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),

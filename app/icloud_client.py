@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Any
@@ -199,6 +200,165 @@ class ICloudDriveClient:
             return []
 
         DRIVE_ROOT = self.api.drive
+
+        if self.config.traversal_workers == 1:
+            return self._walk_node(DRIVE_ROOT, "")
+
+        return self._walk_node_parallel(DRIVE_ROOT, "")
+
+# --------------------------------------------------------------------------
+# This function traverses iCloud Drive using bounded parallel directory reads.
+#
+# 1. "ROOT_NODE" is the iCloud Drive root node.
+# 2. "ROOT_PATH" is the relative path prefix for the root node.
+#
+# Returns: Flat list of discovered remote entries.
+# --------------------------------------------------------------------------
+    def _walk_node_parallel(self, ROOT_NODE: Any, ROOT_PATH: str) -> list[RemoteEntry]:
+        RESULT: list[RemoteEntry] = []
+
+        with ThreadPoolExecutor(max_workers=self.config.traversal_workers) as EXECUTOR:
+            FUTURES = {
+                EXECUTOR.submit(self._walk_node_shallow, ROOT_NODE, ROOT_PATH): ROOT_PATH,
+            }
+
+            while FUTURES:
+                DONE_FUTURES, _ = wait(FUTURES.keys(), return_when=FIRST_COMPLETED)
+
+                for FUTURE in DONE_FUTURES:
+                    del FUTURES[FUTURE]
+                    ENTRIES, CHILD_DIRECTORIES = FUTURE.result()
+                    RESULT.extend(ENTRIES)
+
+                    for CHILD_PATH, CHILD_NODE in CHILD_DIRECTORIES:
+                        FUTURES[
+                            EXECUTOR.submit(self._walk_node_shallow, CHILD_NODE, CHILD_PATH)
+                        ] = CHILD_PATH
+
+        return sorted(RESULT, key=lambda ENTRY: ENTRY.path)
+
+# --------------------------------------------------------------------------
+# This function returns one-level entries and child directories for traversal.
+#
+# 1. "NODE" is the current drive node.
+# 2. "CURRENT_PATH" is the current relative path prefix.
+#
+# Returns: Tuple "(entries, child_directories)".
+# --------------------------------------------------------------------------
+    def _walk_node_shallow(
+        self,
+        NODE: Any,
+        CURRENT_PATH: str,
+    ) -> tuple[list[RemoteEntry], list[tuple[str, Any]]]:
+        DIRECTORY_INFO = self._node_dir(NODE)
+        DIRS = DIRECTORY_INFO.get("dirs", [])
+        FILES = DIRECTORY_INFO.get("files", [])
+        NAMES = DIRECTORY_INFO.get("names", [])
+
+        if isinstance(NAMES, list) and NAMES:
+            return self._shallow_entries_from_names(NODE, CURRENT_PATH, NAMES)
+
+        return self._shallow_entries_from_payload(NODE, CURRENT_PATH, DIRS, FILES)
+
+# --------------------------------------------------------------------------
+# This function builds one-level entries from child-name payloads.
+#
+# 1. "NODE" is current drive node.
+# 2. "CURRENT_PATH" is current relative path.
+# 3. "NAMES" is list of child names from pyicloud.
+#
+# Returns: Tuple "(entries, child_directories)".
+# --------------------------------------------------------------------------
+    def _shallow_entries_from_names(
+        self,
+        NODE: Any,
+        CURRENT_PATH: str,
+        NAMES: list[str],
+    ) -> tuple[list[RemoteEntry], list[tuple[str, Any]]]:
+        ENTRIES: list[RemoteEntry] = []
+        CHILD_DIRECTORIES: list[tuple[str, Any]] = []
+
+        for NAME in NAMES:
+            CLEAN_NAME = str(NAME).strip()
+
+            if not CLEAN_NAME:
+                continue
+
+            CHILD = self._child_node(NODE, CLEAN_NAME)
+
+            if CHILD is None:
+                continue
+
+            RELATIVE_PATH = f"{CURRENT_PATH}/{CLEAN_NAME}".strip("/")
+            IS_DIR = self._child_is_dir(CHILD)
+
+            if IS_DIR:
+                ENTRIES.append(
+                    RemoteEntry(
+                        path=RELATIVE_PATH,
+                        is_dir=True,
+                        size=0,
+                        modified=self._child_modified(CHILD),
+                    )
+                )
+                CHILD_DIRECTORIES.append((RELATIVE_PATH, CHILD))
+                continue
+
+            ENTRIES.append(
+                RemoteEntry(
+                    path=RELATIVE_PATH,
+                    is_dir=False,
+                    size=self._child_size(CHILD),
+                    modified=self._child_modified(CHILD),
+                )
+            )
+
+        return ENTRIES, CHILD_DIRECTORIES
+
+# --------------------------------------------------------------------------
+# This function builds one-level entries from normalised dir/file payloads.
+#
+# 1. "NODE" is current drive node.
+# 2. "CURRENT_PATH" is current relative path.
+# 3. "DIRS" is directory metadata list.
+# 4. "FILES" is file metadata list.
+#
+# Returns: Tuple "(entries, child_directories)".
+# --------------------------------------------------------------------------
+    def _shallow_entries_from_payload(
+        self,
+        NODE: Any,
+        CURRENT_PATH: str,
+        DIRS: list[Any],
+        FILES: list[Any],
+    ) -> tuple[list[RemoteEntry], list[tuple[str, Any]]]:
+        ENTRIES = self._entries_from_files(CURRENT_PATH, FILES)
+        CHILD_DIRECTORIES: list[tuple[str, Any]] = []
+
+        for ITEM in DIRS:
+            NAME = self._item_name(ITEM)
+
+            if not NAME:
+                continue
+
+            RELATIVE_PATH = f"{CURRENT_PATH}/{NAME}".strip("/")
+            ENTRIES.append(
+                RemoteEntry(
+                    path=RELATIVE_PATH,
+                    is_dir=True,
+                    size=0,
+                    modified=self._item_modified(ITEM),
+                )
+            )
+
+            CHILD = self._child_node(NODE, NAME)
+
+            if CHILD is None:
+                continue
+
+            CHILD_DIRECTORIES.append((RELATIVE_PATH, CHILD))
+
+        return ENTRIES, CHILD_DIRECTORIES
         return self._walk_node(DRIVE_ROOT, "")
 
 # --------------------------------------------------------------------------

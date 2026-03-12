@@ -104,6 +104,9 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
             "SCHEDULE_INTERVAL_MINUTES must be at least 1 when RUN_ONCE is false."
         )
 
+    if CONFIG.traversal_workers < 1 or CONFIG.traversal_workers > 8:
+        ERRORS.append("TRAVERSAL_WORKERS must be an integer between 1 and 8.")
+
     if CONFIG.sync_workers < 0 or CONFIG.sync_workers > 16:
         ERRORS.append("SYNC_WORKERS must be auto or an integer between 1 and 16.")
 

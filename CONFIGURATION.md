@@ -52,6 +52,8 @@ These are usually left as-is unless you have a specific reason to change them.
   or `monthly` (default `interval`).
 - `<SVC>_SCHEDULE_INTERVAL_MINUTES`: interval run spacing in minutes (default
   `1440`).
+- `<SVC>_TRAVERSAL_WORKERS`: directory traversal worker count, as an integer
+  from `1` to `8` (default `1`, serial traversal).
 - `<SVC>_SYNC_WORKERS`: transfer worker override, using `auto` or an integer
   from `1` to `16` (default `auto`).
 - `<SVC>_DOWNLOAD_CHUNK_MIB`: streamed download chunk size in MiB, as an

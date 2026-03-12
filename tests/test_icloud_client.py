@@ -45,6 +45,7 @@ def build_config_for_icloud(TMPDIR: str) -> AppConfig:
         schedule_weekdays="monday",
         schedule_monthly_week="first",
         schedule_interval_minutes=60,
+        traversal_workers=1,
         sync_workers=0,
         download_chunk_mib=4,
         reauth_interval_days=30,
@@ -261,6 +262,29 @@ class TestICloudClientTraversal(unittest.TestCase):
             ENTRIES = CLIENT.list_entries()
             PATHS = sorted(ENTRY.path for ENTRY in ENTRIES)
             self.assertEqual(PATHS, ["docs", "docs/inner.txt", "root.txt"])
+
+    def test_list_entries_uses_parallel_traversal_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CONFIG = AppConfig(**(CONFIG.__dict__ | {"traversal_workers": 3}))
+            CLIENT = ICloudDriveClient(CONFIG)
+            CLIENT.api = Mock(drive=FakeNode([]))
+
+            with patch.object(CLIENT, "_walk_node_parallel", return_value=[]) as PARALLEL_WALK:
+                CLIENT.list_entries()
+
+            PARALLEL_WALK.assert_called_once()
+
+    def test_list_entries_uses_serial_traversal_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            CLIENT.api = Mock(drive=FakeNode([]))
+
+            with patch.object(CLIENT, "_walk_node", return_value=[]) as SERIAL_WALK:
+                CLIENT.list_entries()
+
+            SERIAL_WALK.assert_called_once()
 
     def test_node_dir_and_child_node_error_paths(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
