@@ -410,6 +410,7 @@ class TestICloudClientDownloads(unittest.TestCase):
             CLIENT = ICloudDriveClient(CONFIG)
             RESULT = CLIENT.download_file("docs/file.txt", Path(TMPDIR) / "out.txt")
             self.assertFalse(RESULT)
+            self.assertEqual(CLIENT.get_last_download_failure_reason(), "not_authenticated")
 
     def test_resolve_file_object_success_and_failure(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
@@ -469,6 +470,59 @@ class TestICloudClientDownloads(unittest.TestCase):
                 RESULT = CLIENT.download_file("docs/file.bin", Path(TMPDIR) / "file.bin")
 
             self.assertFalse(RESULT)
+            self.assertEqual(CLIENT.get_last_download_failure_reason(), "open_failed")
+
+    def test_download_file_rejects_directory_nodes(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            DIRECTORY_NODE = FakeNode([])
+            CLIENT.api = Mock()
+
+            with patch.object(CLIENT, "_resolve_file_object", return_value=DIRECTORY_NODE):
+                RESULT = CLIENT.download_file("docs/pkg.bundle", Path(TMPDIR) / "pkg.bundle")
+
+            self.assertFalse(RESULT)
+            self.assertEqual(CLIENT.get_last_download_failure_reason(), "directory_node")
+
+    def test_download_package_tree_downloads_nested_files(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            FILE_RESPONSE = Mock()
+            FILE_RESPONSE.iter_content.return_value = [b"abc"]
+            FILE_NODE = SimpleNamespace(open=Mock(return_value=FILE_RESPONSE))
+            SUBDIR_NODE = FakeNode(["inner.txt"], {"inner.txt": FILE_NODE})
+            ROOT_NODE = FakeNode(["data"], {"data": SUBDIR_NODE})
+            CLIENT.api = Mock()
+
+            with patch.object(CLIENT, "_resolve_file_object", return_value=ROOT_NODE):
+                RESULT = CLIENT.download_package_tree(
+                    "docs/pkg.bundle",
+                    Path(TMPDIR) / "pkg.bundle",
+                )
+
+            self.assertTrue(RESULT)
+            self.assertEqual(
+                (Path(TMPDIR) / "pkg.bundle" / "data" / "inner.txt").read_bytes(),
+                b"abc",
+            )
+
+    def test_download_package_tree_fails_for_missing_child(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            ROOT_NODE = FakeNode(["missing.bin"], {})
+            CLIENT.api = Mock()
+
+            with patch.object(CLIENT, "_resolve_file_object", return_value=ROOT_NODE):
+                RESULT = CLIENT.download_package_tree(
+                    "docs/pkg.bundle",
+                    Path(TMPDIR) / "pkg.bundle",
+                )
+
+            self.assertFalse(RESULT)
+            self.assertEqual(CLIENT.get_last_download_failure_reason(), "package_child_missing")
 
     def test_download_file_falls_back_when_stream_keyword_is_unsupported(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:

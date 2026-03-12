@@ -67,6 +67,9 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
   `SYNC_DOWNLOAD_WORKERS`.
 - Download stream chunk size can be tuned with `SYNC_DOWNLOAD_CHUNK_MIB`.
 - Successful downloads preserve remote modified timestamps on local files.
+- When direct file download fails on package-style nodes, worker falls back to
+  recursive package export for directory-like items such as app and bundle
+  structures.
 - Optional mirror-delete behaviour can be enabled with
   `BACKUP_DELETE_REMOVED=true`, which prunes local files and empty directories
   under `/output` when they no longer exist in iCloud.

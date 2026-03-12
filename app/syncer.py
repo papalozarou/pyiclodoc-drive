@@ -374,7 +374,7 @@ def perform_incremental_sync(
                     ENTRY = FUTURES[FUTURE]
                     COMPLETED += 1
                     try:
-                        SUCCESS, ATTEMPT_COUNT = FUTURE.result()
+                        SUCCESS, ATTEMPT_COUNT, TRANSFER_MODE = FUTURE.result()
                     except Exception as ERROR:
                         if LOG_FILE is not None:
                             log_line(
@@ -412,6 +412,15 @@ def perform_incremental_sync(
                                 )
                                 continue
 
+                            if TRANSFER_MODE == "package":
+                                log_line(
+                                    LOG_FILE,
+                                    "debug",
+                                    f"Package transferred: {ENTRY.path} "
+                                    f"({max(ENTRY.size, 0)} bytes)",
+                                )
+                                continue
+
                             log_line(
                                 LOG_FILE,
                                 "debug",
@@ -429,7 +438,7 @@ def perform_incremental_sync(
                         log_line(
                             LOG_FILE,
                             "debug",
-                            f"File transfer failed: {ENTRY.path}",
+                            f"File transfer failed: {ENTRY.path} (reason={TRANSFER_MODE})",
                         )
 
                 NOW_EPOCH = time.monotonic()
@@ -806,9 +815,9 @@ def transfer_if_required(
     OUTPUT_DIR: Path,
     ENTRY: RemoteEntry,
     SHOULD_TRANSFER: bool,
-) -> tuple[bool, int]:
+) -> tuple[bool, int, str]:
     if not SHOULD_TRANSFER:
-        return True, 1
+        return True, 1, "skipped"
 
     LOCAL_PATH = OUTPUT_DIR / ENTRY.path
     ATTEMPT = 1
@@ -816,7 +825,15 @@ def transfer_if_required(
     while ATTEMPT <= TRANSFER_RETRY_ATTEMPTS:
         try:
             IS_SUCCESS = CLIENT.download_file(ENTRY.path, LOCAL_PATH)
-            return IS_SUCCESS, ATTEMPT
+            if IS_SUCCESS:
+                return True, ATTEMPT, "file"
+
+            IS_PACKAGE_SUCCESS = CLIENT.download_package_tree(ENTRY.path, LOCAL_PATH)
+            if IS_PACKAGE_SUCCESS:
+                return True, ATTEMPT, "package"
+
+            FAILURE_REASON = CLIENT.get_last_download_failure_reason() or "download_failed"
+            return False, ATTEMPT, FAILURE_REASON
         except Exception as ERROR:
             if ATTEMPT >= TRANSFER_RETRY_ATTEMPTS:
                 raise
@@ -831,7 +848,7 @@ def transfer_if_required(
             time.sleep(DELAY_SECONDS)
             ATTEMPT += 1
 
-    return False, ATTEMPT
+    return False, ATTEMPT, "retry_exhausted"
 
 
 # ------------------------------------------------------------------------------

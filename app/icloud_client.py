@@ -46,6 +46,7 @@ class ICloudDriveClient:
     def __init__(self, CONFIG: AppConfig):
         self.config = CONFIG
         self.api: PyiCloudService | None = None
+        self._last_download_failure_reason = ""
 
 # --------------------------------------------------------------------------
 # This function aligns cookie and session paths with an
@@ -778,25 +779,168 @@ class ICloudDriveClient:
 # Returns: True on successful download/write, otherwise False.
 # --------------------------------------------------------------------------
     def download_file(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
+        self._set_download_failure_reason("")
+
         if self.api is None:
+            self._set_download_failure_reason("not_authenticated")
             return False
 
         FILE_OBJ = self._resolve_file_object(REMOTE_PATH)
 
         if FILE_OBJ is None:
+            self._set_download_failure_reason("path_not_found")
             return False
 
+        if self._child_is_dir(FILE_OBJ):
+            self._set_download_failure_reason("directory_node")
+            return False
+
+        IS_SUCCESS, FAILURE_REASON = self._download_file_object(FILE_OBJ, LOCAL_PATH)
+
+        if not IS_SUCCESS:
+            self._set_download_failure_reason(FAILURE_REASON)
+            return False
+
+        return True
+
+# --------------------------------------------------------------------------
+# This function downloads package-like directory nodes recursively.
+#
+# 1. "REMOTE_PATH" is slash-separated iCloud Drive path.
+# 2. "LOCAL_PATH" is filesystem destination directory.
+#
+# Returns: True when package export succeeds, otherwise False.
+# --------------------------------------------------------------------------
+    def download_package_tree(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
+        self._set_download_failure_reason("")
+
+        if self.api is None:
+            self._set_download_failure_reason("not_authenticated")
+            return False
+
+        ROOT_NODE = self._resolve_file_object(REMOTE_PATH)
+        if ROOT_NODE is None:
+            self._set_download_failure_reason("path_not_found")
+            return False
+
+        if not self._child_is_dir(ROOT_NODE):
+            self._set_download_failure_reason("not_directory_node")
+            return False
+
+        IS_SUCCESS = self._download_package_node(ROOT_NODE, LOCAL_PATH)
+        if not IS_SUCCESS and not self._last_download_failure_reason:
+            self._set_download_failure_reason("package_download_failed")
+        return IS_SUCCESS
+
+# --------------------------------------------------------------------------
+# This function returns the most recent download failure reason token.
+#
+# Returns: Failure reason token, or empty string when no failure is recorded.
+# --------------------------------------------------------------------------
+    def get_last_download_failure_reason(self) -> str:
+        return self._last_download_failure_reason
+
+# --------------------------------------------------------------------------
+# This function stores a normalised download failure reason token.
+#
+# 1. "REASON" is the reason token to store.
+#
+# Returns: None.
+# --------------------------------------------------------------------------
+    def _set_download_failure_reason(self, REASON: str) -> None:
+        self._last_download_failure_reason = REASON.strip().lower()
+
+# --------------------------------------------------------------------------
+# This function downloads a resolved file node to the provided local path.
+#
+# 1. "FILE_OBJ" is a resolved pyicloud drive node object.
+# 2. "LOCAL_PATH" is filesystem destination.
+#
+# Returns: Tuple "(is_success, failure_reason)".
+# --------------------------------------------------------------------------
+    def _download_file_object(self, FILE_OBJ: Any, LOCAL_PATH: Path) -> tuple[bool, str]:
         LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             OPEN_RESULT = self._open_file_object(FILE_OBJ)
         except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError):
-            return False
+            return False, "open_failed"
 
         if OPEN_RESULT is None:
+            return False, "open_unavailable"
+
+        IS_SUCCESS = self._write_open_result(OPEN_RESULT, LOCAL_PATH)
+        if not IS_SUCCESS:
+            return False, "write_failed"
+
+        return True, ""
+
+# --------------------------------------------------------------------------
+# This function recursively exports package directory content to local paths.
+#
+# 1. "NODE" is current package node.
+# 2. "LOCAL_PATH" is local path for this node.
+#
+# Returns: True when all descendants are exported successfully.
+# --------------------------------------------------------------------------
+    def _download_package_node(self, NODE: Any, LOCAL_PATH: Path) -> bool:
+        LOCAL_PATH.mkdir(parents=True, exist_ok=True)
+        CHILDREN = self._package_child_names(NODE)
+
+        if not CHILDREN:
+            return True
+
+        for NAME in CHILDREN:
+            CHILD_NODE = self._child_node(NODE, NAME)
+            if CHILD_NODE is None:
+                self._set_download_failure_reason("package_child_missing")
+                return False
+
+            CHILD_LOCAL_PATH = LOCAL_PATH / NAME
+            if self._child_is_dir(CHILD_NODE):
+                if self._download_package_node(CHILD_NODE, CHILD_LOCAL_PATH):
+                    continue
+
+                return False
+
+            IS_SUCCESS, FAILURE_REASON = self._download_file_object(CHILD_NODE, CHILD_LOCAL_PATH)
+            if IS_SUCCESS:
+                continue
+
+            self._set_download_failure_reason(FAILURE_REASON)
             return False
 
-        return self._write_open_result(OPEN_RESULT, LOCAL_PATH)
+        return True
+
+# --------------------------------------------------------------------------
+# This function collects unique child names from package directory metadata.
+#
+# 1. "NODE" is current package node.
+#
+# Returns: Ordered child-name list.
+# --------------------------------------------------------------------------
+    def _package_child_names(self, NODE: Any) -> list[str]:
+        DIRECTORY_INFO = self._node_dir(NODE)
+        NAMES = DIRECTORY_INFO.get("names", [])
+        DIRS = DIRECTORY_INFO.get("dirs", [])
+        FILES = DIRECTORY_INFO.get("files", [])
+        RESULT: list[str] = []
+
+        for ITEM in NAMES:
+            NAME = str(ITEM).strip()
+            if not NAME:
+                continue
+            RESULT.append(NAME)
+
+        for ITEM in DIRS + FILES:
+            if not isinstance(ITEM, dict):
+                continue
+            NAME = self._item_name(ITEM)
+            if not NAME:
+                continue
+            RESULT.append(NAME)
+
+        return sorted(set(RESULT))
 
 # --------------------------------------------------------------------------
 # This function opens a remote file object using stream mode when supported.

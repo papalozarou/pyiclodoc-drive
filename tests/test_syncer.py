@@ -48,7 +48,10 @@ class FakeClient:
     def __init__(self, ENTRIES: list[RemoteEntry], DOWNLOAD_RESULTS: dict[str, bool]):
         self.entries = ENTRIES
         self.download_results = DOWNLOAD_RESULTS
+        self.package_results: dict[str, bool] = {}
         self.download_calls = 0
+        self.package_calls = 0
+        self.last_reason = ""
 
     def list_entries(self) -> list[RemoteEntry]:
         return self.entries
@@ -61,7 +64,25 @@ class FakeClient:
         if RESULT:
             LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
             LOCAL_PATH.write_bytes(b"data")
+            self.last_reason = ""
+            return RESULT
+
+        self.last_reason = "download_failed"
         return RESULT
+
+    def download_package_tree(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
+        _ = LOCAL_PATH
+        self.package_calls += 1
+        RESULT = self.package_results.get(REMOTE_PATH, False)
+        if RESULT:
+            self.last_reason = ""
+            return True
+
+        self.last_reason = "package_download_failed"
+        return False
+
+    def get_last_download_failure_reason(self) -> str:
+        return self.last_reason
 
 
 # ------------------------------------------------------------------------------
@@ -448,6 +469,25 @@ class TestSyncerHelpers(unittest.TestCase):
             self.assertTrue(LOCAL_FILE.exists())
             EXPECTED_MTIME = time.mktime(time.strptime("2026-03-12T10:15:30Z", "%Y-%m-%dT%H:%M:%SZ"))
             self.assertAlmostEqual(LOCAL_FILE.stat().st_mtime, EXPECTED_MTIME, delta=2.0)
+
+# --------------------------------------------------------------------------
+# This test confirms package fallback succeeds when file download fails.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_uses_package_fallback(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/archive.bundle", False, 0, "2026-03-12T10:15:30Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/archive.bundle": False})
+        CLIENT.package_results["docs/archive.bundle"] = True
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), {})
+
+        self.assertEqual(CLIENT.download_calls, 1)
+        self.assertEqual(CLIENT.package_calls, 1)
+        self.assertEqual(SUMMARY.transferred_files, 1)
+        self.assertEqual(SUMMARY.error_files, 0)
+        self.assertIn("docs/archive.bundle", NEW_MANIFEST)
 
 # --------------------------------------------------------------------------
 # This test confirms delete-removed mode prunes stale local files and
