@@ -204,6 +204,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertFalse(NEW_STATE.reauth_pending)
             CLIENT.complete_authentication.assert_called_once_with("123456")
             self.assertIn("Authentication complete", NOTIFY.call_args[0][1])
+            self.assertIn("*🔒 iCloudDD - Authentication complete*", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
 # This test confirms attempt_auth MFA-required branch sets auth pending.
@@ -391,6 +392,33 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertNotIn("Mode:", NOTIFY.call_args_list[0].args[1])
             self.assertNotIn("Trigger:", NOTIFY.call_args_list[0].args[1])
             self.assertIn("Average speed:", NOTIFY.call_args_list[1].args[1])
+
+# --------------------------------------------------------------------------
+# This test confirms backup completion omits speed when no files transfer.
+# --------------------------------------------------------------------------
+    def test_run_backup_omits_average_speed_when_nothing_downloaded(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            TELEGRAM = TelegramConfig("token", "12345")
+            LOG_FILE = CONFIG.logs_dir / "worker.log"
+            CLIENT = Mock()
+            SUMMARY = SimpleNamespace(
+                transferred_files=0,
+                transferred_bytes=0,
+                total_files=3,
+                skipped_files=3,
+                error_files=0,
+            )
+
+            with patch("app.main.load_manifest", return_value={"/a": {"etag": "1"}}):
+                with patch("app.main.perform_incremental_sync", return_value=(SUMMARY, {"/a": {"etag": "1"}})):
+                    with patch("app.main.save_manifest"):
+                        with patch("app.main.notify") as NOTIFY:
+                            with patch("app.main.log_line"):
+                                run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, "scheduled")
+
+            self.assertEqual(NOTIFY.call_count, 2)
+            self.assertNotIn("Average speed:", NOTIFY.call_args_list[1].args[1])
 
 # --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.

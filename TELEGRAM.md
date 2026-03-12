@@ -53,7 +53,7 @@ Current message templates include:
 - `*🛑 iCloudDD - Container stopped*`
 - `*🔑 iCloudDD - Authentication required*`
 - `*🔑 iCloudDD - Reauthentication required*`
-- `*✅ iCloudDD - Authentication complete*`
+- `*🔒 iCloudDD - Authentication complete*`
 - `*❌ iCloudDD - Authentication failed*`
 - `*📥 iCloudDD - Backup requested*`
 - `*⬇️ iCloudDD - Backup started*`
@@ -68,7 +68,7 @@ Backup completion messages include:
 - `Skipped: <count>`
 - `Errors: <count>`
 - `Duration: <hh:mm:ss>`
-- `Average speed: <value> MiB/s`
+- `Average speed: <value> MiB/s` (only when files were downloaded)
 
 Backup start messages include:
 

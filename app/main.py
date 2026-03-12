@@ -658,7 +658,7 @@ def attempt_auth(
         notify(
             TELEGRAM,
             format_telegram_event(
-                "✅",
+                "🔒",
                 "Authentication complete",
                 f"Authenticated for Apple ID {APPLE_ID_LABEL}.",
                 [DETAILS],
@@ -896,17 +896,21 @@ def run_backup(
 
     DURATION_SECONDS = int(time.time()) - RUN_START_EPOCH
     AVERAGE_SPEED = format_average_speed(SUMMARY.transferred_bytes, DURATION_SECONDS)
+    STATUS_LINES = [
+        f"Transferred: {SUMMARY.transferred_files}/{SUMMARY.total_files}",
+        f"Skipped: {SUMMARY.skipped_files}",
+        f"Errors: {SUMMARY.error_files}",
+        f"Duration: {format_duration_clock(DURATION_SECONDS)}",
+    ]
+
+    if SUMMARY.transferred_files > 0:
+        STATUS_LINES.append(f"Average speed: {AVERAGE_SPEED}")
+
     COMPLETION_MESSAGE = format_telegram_event(
         "📦",
         "Backup complete",
         f"Backup finished for Apple ID {APPLE_ID_LABEL}.",
-        [
-            f"Transferred: {SUMMARY.transferred_files}/{SUMMARY.total_files}",
-            f"Skipped: {SUMMARY.skipped_files}",
-            f"Errors: {SUMMARY.error_files}",
-            f"Duration: {format_duration_clock(DURATION_SECONDS)}",
-            f"Average speed: {AVERAGE_SPEED}",
-        ],
+        STATUS_LINES,
     )
     notify(TELEGRAM, COMPLETION_MESSAGE)
     log_line(
