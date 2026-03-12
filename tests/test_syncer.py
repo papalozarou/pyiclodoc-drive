@@ -7,6 +7,7 @@
 # ------------------------------------------------------------------------------
 
 from pathlib import Path
+import os
 import tempfile
 import time
 import unittest
@@ -47,16 +48,20 @@ class FakeClient:
     def __init__(self, ENTRIES: list[RemoteEntry], DOWNLOAD_RESULTS: dict[str, bool]):
         self.entries = ENTRIES
         self.download_results = DOWNLOAD_RESULTS
+        self.download_calls = 0
 
     def list_entries(self) -> list[RemoteEntry]:
         return self.entries
 
     def download_file(self, REMOTE_PATH: str, LOCAL_PATH: Path) -> bool:
-        _ = LOCAL_PATH
+        self.download_calls += 1
         if REMOTE_PATH == "docs/explode.txt":
             raise RuntimeError("boom")
-
-        return self.download_results.get(REMOTE_PATH, True)
+        RESULT = self.download_results.get(REMOTE_PATH, True)
+        if RESULT:
+            LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            LOCAL_PATH.write_bytes(b"data")
+        return RESULT
 
 
 # ------------------------------------------------------------------------------
@@ -367,6 +372,82 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(SUMMARY.error_files, 1)
         self.assertEqual(NEW_MANIFEST["docs/file.txt"]["size"], 11)
         self.assertEqual(NEW_MANIFEST["docs/file.txt"]["modified"], "2026-03-09T00:00:00Z")
+
+# --------------------------------------------------------------------------
+# This test confirms first-run reconciliation skips download when local
+# file metadata already matches remote metadata.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_reconciles_first_run_existing_files(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs", True, 0, "2026-03-12T00:00:00Z"),
+            RemoteEntry("docs/keep.txt", False, 4, "2026-03-12T00:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/keep.txt": True})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            LOCAL_FILE = ROOT_DIR / "docs" / "keep.txt"
+            LOCAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+            LOCAL_FILE.write_text("keep", encoding="utf-8")
+
+            REMOTE_MTIME = time.mktime(time.strptime("2026-03-12T00:00:00Z", "%Y-%m-%dT%H:%M:%SZ"))
+            os.utime(LOCAL_FILE, (REMOTE_MTIME, REMOTE_MTIME))
+
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, ROOT_DIR, {})
+
+        self.assertEqual(CLIENT.download_calls, 0)
+        self.assertEqual(SUMMARY.total_files, 1)
+        self.assertEqual(SUMMARY.transferred_files, 0)
+        self.assertEqual(SUMMARY.skipped_files, 1)
+        self.assertEqual(SUMMARY.error_files, 0)
+        self.assertIn("docs/keep.txt", NEW_MANIFEST)
+
+# --------------------------------------------------------------------------
+# This test confirms first-run reconciliation still downloads when local
+# metadata does not match remote metadata.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_reconciles_first_run_mismatch_downloads(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs", True, 0, "2026-03-12T00:00:00Z"),
+            RemoteEntry("docs/keep.txt", False, 4, "2026-03-12T00:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/keep.txt": True})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            LOCAL_FILE = ROOT_DIR / "docs" / "keep.txt"
+            LOCAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+            LOCAL_FILE.write_text("old", encoding="utf-8")
+            os.utime(LOCAL_FILE, None)
+
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, ROOT_DIR, {})
+
+        self.assertEqual(CLIENT.download_calls, 1)
+        self.assertEqual(SUMMARY.total_files, 1)
+        self.assertEqual(SUMMARY.transferred_files, 1)
+        self.assertEqual(SUMMARY.skipped_files, 0)
+        self.assertEqual(SUMMARY.error_files, 0)
+        self.assertIn("docs/keep.txt", NEW_MANIFEST)
+
+# --------------------------------------------------------------------------
+# This test confirms successful transfers apply remote modified timestamps
+# to downloaded local files.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_applies_remote_modified_timestamp(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/new.txt", False, 4, "2026-03-12T10:15:30Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/new.txt": True})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, ROOT_DIR, {})
+            LOCAL_FILE = ROOT_DIR / "docs" / "new.txt"
+            self.assertEqual(SUMMARY.transferred_files, 1)
+            self.assertIn("docs/new.txt", NEW_MANIFEST)
+            self.assertTrue(LOCAL_FILE.exists())
+            EXPECTED_MTIME = time.mktime(time.strptime("2026-03-12T10:15:30Z", "%Y-%m-%dT%H:%M:%SZ"))
+            self.assertAlmostEqual(LOCAL_FILE.stat().st_mtime, EXPECTED_MTIME, delta=2.0)
 
 # --------------------------------------------------------------------------
 # This test confirms delete-removed mode prunes stale local files and

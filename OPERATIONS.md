@@ -55,12 +55,16 @@ validation rules, see [SCHEDULING.md](SCHEDULING.md).
 ## Transfer performance
 
 - Incremental sync uses `manifest.json` and skips unchanged files.
+- On first run with an empty manifest, worker reconciles existing local files
+  under `/output` against remote metadata (size and modified time) and seeds
+  manifest entries without re-downloading matched files.
 - Directory traversal can run in bounded parallel mode with
   `SYNC_TRAVERSAL_WORKERS`.
 - Changed-file downloads run in parallel automatically based on host CPU.
 - Worker count is internally bounded and can be overridden with
   `SYNC_DOWNLOAD_WORKERS`.
 - Download stream chunk size can be tuned with `SYNC_DOWNLOAD_CHUNK_MIB`.
+- Successful downloads preserve remote modified timestamps on local files.
 - Optional mirror-delete behaviour can be enabled with
   `BACKUP_DELETE_REMOVED=true`, which prunes local files and empty directories
   under `/output` when they no longer exist in iCloud.
