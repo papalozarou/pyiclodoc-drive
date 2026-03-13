@@ -524,6 +524,55 @@ class TestICloudClientDownloads(unittest.TestCase):
             self.assertFalse(RESULT)
             self.assertEqual(CLIENT.get_last_download_failure_reason(), "package_child_missing")
 
+    def test_download_package_tree_uses_parent_metadata_for_non_directory_root(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            ROOT_NODE = SimpleNamespace()
+            PARENT_NODE = FakeNode(
+                {
+                    "dirs": [],
+                    "files": [
+                        {
+                            "name": "pkg.bundle",
+                            "items": [
+                                {
+                                    "name": "inner.txt",
+                                    "size": 3,
+                                    "modified": "2026-03-12T10:15:30Z",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                {"pkg.bundle": ROOT_NODE},
+            )
+            FILE_RESPONSE = Mock()
+            FILE_RESPONSE.iter_content.return_value = [b"abc"]
+            FILE_NODE = SimpleNamespace(open=Mock(return_value=FILE_RESPONSE))
+            CLIENT.api = Mock()
+
+            def resolve_side_effect(REMOTE_PATH: str):
+                if REMOTE_PATH == "docs/pkg.bundle":
+                    return ROOT_NODE
+                if REMOTE_PATH == "docs":
+                    return PARENT_NODE
+                if REMOTE_PATH == "docs/pkg.bundle/inner.txt":
+                    return FILE_NODE
+                return None
+
+            with patch.object(CLIENT, "_resolve_file_object", side_effect=resolve_side_effect):
+                RESULT = CLIENT.download_package_tree(
+                    "docs/pkg.bundle",
+                    Path(TMPDIR) / "pkg.bundle",
+                )
+
+            self.assertTrue(RESULT)
+            self.assertEqual(
+                (Path(TMPDIR) / "pkg.bundle" / "inner.txt").read_bytes(),
+                b"abc",
+            )
+
     def test_download_file_falls_back_when_stream_keyword_is_unsupported(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)

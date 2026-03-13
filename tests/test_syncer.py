@@ -21,12 +21,14 @@ install_dependency_stubs()
 
 from app.syncer import (
     collect_mismatches,
+    get_transfer_failure_reason,
     get_auto_worker_count,
     get_transfer_worker_count,
     is_retryable_transfer_error,
     needs_transfer,
     perform_incremental_sync,
     PROGRESS_LOG_SEPARATOR,
+    transfer_if_required,
 )
 
 
@@ -49,6 +51,7 @@ class FakeClient:
         self.entries = ENTRIES
         self.download_results = DOWNLOAD_RESULTS
         self.package_results: dict[str, bool] = {}
+        self.package_failure_reasons: dict[str, str] = {}
         self.download_calls = 0
         self.package_calls = 0
         self.last_reason = ""
@@ -78,7 +81,10 @@ class FakeClient:
             self.last_reason = ""
             return True
 
-        self.last_reason = "package_download_failed"
+        self.last_reason = self.package_failure_reasons.get(
+            REMOTE_PATH,
+            "package_download_failed",
+        )
         return False
 
     def get_last_download_failure_reason(self) -> str:
@@ -122,6 +128,49 @@ class TestSyncerHelpers(unittest.TestCase):
         }
 
         self.assertFalse(needs_transfer(ENTRY, MANIFEST))
+
+# --------------------------------------------------------------------------
+# This test confirms fallback reason merge preserves primary file failures
+# when package fallback is not directory-capable.
+# --------------------------------------------------------------------------
+    def test_get_transfer_failure_reason_prefers_primary_failure(self) -> None:
+        RESULT = get_transfer_failure_reason("open_failed", "not_directory_node")
+        self.assertEqual(RESULT, "open_failed")
+
+# --------------------------------------------------------------------------
+# This test confirms fallback reason merge includes both reasons when they
+# are independently meaningful diagnostics.
+# --------------------------------------------------------------------------
+    def test_get_transfer_failure_reason_combines_distinct_failures(self) -> None:
+        RESULT = get_transfer_failure_reason("open_failed", "package_child_missing")
+        self.assertEqual(RESULT, "open_failed; fallback=package_child_missing")
+
+# --------------------------------------------------------------------------
+# This test confirms transfer fallback keeps the initial file failure reason
+# when package fallback only reports a non-directory marker.
+# --------------------------------------------------------------------------
+    def test_transfer_if_required_keeps_primary_reason_on_non_directory_fallback(self) -> None:
+        ENTRY = RemoteEntry(
+            path="docs/archive.bundle",
+            is_dir=False,
+            size=4,
+            modified="2026-03-07T12:00:00Z",
+        )
+        CLIENT = FakeClient([ENTRY], {"docs/archive.bundle": False})
+        CLIENT.package_results["docs/archive.bundle"] = False
+        CLIENT.package_failure_reasons["docs/archive.bundle"] = "not_directory_node"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            IS_SUCCESS, ATTEMPT, REASON = transfer_if_required(
+                CLIENT,
+                Path(TMPDIR),
+                ENTRY,
+                True,
+            )
+
+        self.assertFalse(IS_SUCCESS)
+        self.assertEqual(ATTEMPT, 1)
+        self.assertEqual(REASON, "download_failed")
 
 # --------------------------------------------------------------------------
 # This test confirms ownership mismatch detection identifies outlier files.
