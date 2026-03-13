@@ -531,18 +531,91 @@ def list_entries_with_progress(
     STARTED_EPOCH: float,
 ) -> list[RemoteEntry]:
     TIMEOUT_SECONDS = max(TRAVERSAL_PROGRESS_LOG_INTERVAL_SECONDS, 0.01)
+    PREVIOUS_SNAPSHOT: dict[str, int | float] = {
+        "entries_discovered": 0,
+        "files_discovered": 0,
+        "directories_discovered": 0,
+        "directories_completed": 0,
+    }
+    PREVIOUS_LOG_EPOCH = STARTED_EPOCH
 
     with ThreadPoolExecutor(max_workers=1) as EXECUTOR:
         FUTURE = EXECUTOR.submit(CLIENT.list_entries)
 
         while True:
             try:
-                return FUTURE.result(timeout=TIMEOUT_SECONDS)
+                RESULT = FUTURE.result(timeout=TIMEOUT_SECONDS)
+                if LOG_FILE is not None:
+                    STATS = (
+                        CLIENT.get_traversal_stats_snapshot()
+                        if hasattr(CLIENT, "get_traversal_stats_snapshot")
+                        else {}
+                    )
+                    SLOW_DIRS = STATS.get("slow_dirs", []) if isinstance(STATS, dict) else []
+                    SLOW_TOP = ""
+                    if isinstance(SLOW_DIRS, list) and SLOW_DIRS:
+                        TOP_PATHS = [
+                            f"{ITEM.get('path', '/')}: {ITEM.get('duration_seconds', 0)}s"
+                            for ITEM in SLOW_DIRS[:3]
+                            if isinstance(ITEM, dict)
+                        ]
+                        SLOW_TOP = ", ".join(TOP_PATHS)
+
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        "Traversal queue detail: "
+                        f"pending={STATS.get('directories_pending', 0)}, "
+                        f"active={STATS.get('workers_active', 0)}, "
+                        f"completed_dirs={STATS.get('directories_completed', 0)}",
+                    )
+                    log_line(
+                        LOG_FILE,
+                        "debug",
+                        "Traversal read detail: "
+                        f"dir_reads={STATS.get('dir_reads', 0)}, "
+                        f"retries={STATS.get('dir_retries', 0)}, "
+                        f"failures={STATS.get('dir_failures', 0)}",
+                    )
+                    if SLOW_TOP:
+                        log_line(
+                            LOG_FILE,
+                            "debug",
+                            f"Traversal slow-path detail: {SLOW_TOP}",
+                        )
+                return RESULT
             except TimeoutError:
                 if LOG_FILE is None:
                     continue
 
                 ELAPSED_SECONDS = time.monotonic() - STARTED_EPOCH
+                NOW_EPOCH = time.monotonic()
+                WINDOW_SECONDS = max(NOW_EPOCH - PREVIOUS_LOG_EPOCH, 0.001)
+                STATS = (
+                    CLIENT.get_traversal_stats_snapshot()
+                    if hasattr(CLIENT, "get_traversal_stats_snapshot")
+                    else {}
+                )
+                CURRENT_ENTRIES = int(STATS.get("entries_discovered", 0))
+                CURRENT_FILES = int(STATS.get("files_discovered", 0))
+                CURRENT_DIRECTORIES = int(STATS.get("directories_discovered", 0))
+                CURRENT_COMPLETED = int(STATS.get("directories_completed", 0))
+                ENTRY_DELTA = max(CURRENT_ENTRIES - int(PREVIOUS_SNAPSHOT["entries_discovered"]), 0)
+                DIR_DELTA = max(
+                    CURRENT_COMPLETED - int(PREVIOUS_SNAPSHOT["directories_completed"]),
+                    0,
+                )
+                ENTRIES_PER_SECOND = ENTRY_DELTA / WINDOW_SECONDS
+                DIRS_PER_SECOND = DIR_DELTA / WINDOW_SECONDS
+                SLOW_DIRS = STATS.get("slow_dirs", []) if isinstance(STATS, dict) else []
+                SLOW_TOP = ""
+                if isinstance(SLOW_DIRS, list) and SLOW_DIRS:
+                    TOP_PATHS = [
+                        f"{ITEM.get('path', '/')}: {ITEM.get('duration_seconds', 0)}s"
+                        for ITEM in SLOW_DIRS[:3]
+                        if isinstance(ITEM, dict)
+                    ]
+                    SLOW_TOP = ", ".join(TOP_PATHS)
                 log_line(
                     LOG_FILE,
                     "debug",
@@ -557,8 +630,43 @@ def list_entries_with_progress(
                 log_line(
                     LOG_FILE,
                     "debug",
+                    "Traversal queue detail: "
+                    f"pending={STATS.get('directories_pending', 0)}, "
+                    f"active={STATS.get('workers_active', 0)}, "
+                    f"completed_dirs={CURRENT_COMPLETED}",
+                )
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    "Traversal throughput detail: "
+                    f"entries={CURRENT_ENTRIES}, "
+                    f"files={CURRENT_FILES}, "
+                    f"directories={CURRENT_DIRECTORIES}, "
+                    f"entries_per_second={ENTRIES_PER_SECOND:.2f}, "
+                    f"directories_per_second={DIRS_PER_SECOND:.2f}",
+                )
+                log_line(
+                    LOG_FILE,
+                    "debug",
+                    "Traversal read detail: "
+                    f"dir_reads={STATS.get('dir_reads', 0)}, "
+                    f"retries={STATS.get('dir_retries', 0)}, "
+                    f"failures={STATS.get('dir_failures', 0)}",
+                )
+                if SLOW_TOP:
+                    log_line(LOG_FILE, "debug", f"Traversal slow-path detail: {SLOW_TOP}")
+                log_line(
+                    LOG_FILE,
+                    "debug",
                     PROGRESS_LOG_SEPARATOR,
                 )
+                PREVIOUS_SNAPSHOT = {
+                    "entries_discovered": CURRENT_ENTRIES,
+                    "files_discovered": CURRENT_FILES,
+                    "directories_discovered": CURRENT_DIRECTORIES,
+                    "directories_completed": CURRENT_COMPLETED,
+                }
+                PREVIOUS_LOG_EPOCH = NOW_EPOCH
 
 
 # ------------------------------------------------------------------------------

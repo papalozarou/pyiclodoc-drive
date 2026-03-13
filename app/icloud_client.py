@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Any
 import shutil
+import threading
 import time
 
 from pyicloud import PyiCloudService
@@ -19,6 +20,8 @@ from app.config import AppConfig
 DIR_RETRY_ATTEMPTS = 4
 DIR_RETRY_BASE_DELAY_SECONDS = 0.05
 DIR_RETRY_MAX_DELAY_SECONDS = 0.40
+TRAVERSAL_SLOW_DIR_SECONDS = 5.0
+TRAVERSAL_SLOW_DIR_LIMIT = 5
 
 
 # ------------------------------------------------------------------------------
@@ -47,6 +50,121 @@ class ICloudDriveClient:
         self.config = CONFIG
         self.api: PyiCloudService | None = None
         self._last_download_failure_reason = ""
+        self._stats_lock = threading.Lock()
+        self._traversal_stats = self._build_empty_traversal_stats()
+
+# --------------------------------------------------------------------------
+# This function creates a clean traversal telemetry dictionary.
+#
+# Returns: Empty traversal statistics dictionary.
+# --------------------------------------------------------------------------
+    def _build_empty_traversal_stats(self) -> dict[str, Any]:
+        return {
+            "directories_completed": 0,
+            "directories_pending": 0,
+            "workers_active": 0,
+            "entries_discovered": 0,
+            "files_discovered": 0,
+            "directories_discovered": 0,
+            "dir_reads": 0,
+            "dir_retries": 0,
+            "dir_failures": 0,
+            "slow_dirs": [],
+        }
+
+# --------------------------------------------------------------------------
+# This function resets traversal telemetry before each list operation.
+#
+# Returns: None.
+# --------------------------------------------------------------------------
+    def _reset_traversal_stats(self) -> None:
+        with self._stats_lock:
+            self._traversal_stats = self._build_empty_traversal_stats()
+
+# --------------------------------------------------------------------------
+# This function returns a thread-safe snapshot of traversal telemetry.
+#
+# Returns: Traversal statistics snapshot dictionary.
+# --------------------------------------------------------------------------
+    def get_traversal_stats_snapshot(self) -> dict[str, Any]:
+        with self._stats_lock:
+            SLOW_DIRS = list(self._traversal_stats.get("slow_dirs", []))
+            RESULT = dict(self._traversal_stats)
+            RESULT["slow_dirs"] = SLOW_DIRS
+            return RESULT
+
+# --------------------------------------------------------------------------
+# This function records discovered entry counters for traversal telemetry.
+#
+# 1. "IS_DIR" indicates whether entry is a directory.
+#
+# Returns: None.
+# --------------------------------------------------------------------------
+    def _record_traversal_entry(self, IS_DIR: bool) -> None:
+        with self._stats_lock:
+            self._traversal_stats["entries_discovered"] += 1
+            if IS_DIR:
+                self._traversal_stats["directories_discovered"] += 1
+                return
+            self._traversal_stats["files_discovered"] += 1
+
+# --------------------------------------------------------------------------
+# This function stores in-flight traversal worker and queue stats.
+#
+# 1. "DIRECTORIES_COMPLETED" is completed directory task count.
+# 2. "DIRECTORIES_PENDING" is queued or running directory task count.
+# 3. "WORKERS_ACTIVE" is active worker count estimate.
+#
+# Returns: None.
+# --------------------------------------------------------------------------
+    def _record_traversal_queue_state(
+        self,
+        DIRECTORIES_COMPLETED: int,
+        DIRECTORIES_PENDING: int,
+        WORKERS_ACTIVE: int,
+    ) -> None:
+        with self._stats_lock:
+            self._traversal_stats["directories_completed"] = max(DIRECTORIES_COMPLETED, 0)
+            self._traversal_stats["directories_pending"] = max(DIRECTORIES_PENDING, 0)
+            self._traversal_stats["workers_active"] = max(WORKERS_ACTIVE, 0)
+
+# --------------------------------------------------------------------------
+# This function records a directory-read attempt outcome for traversal
+# telemetry and retains the slowest directory reads.
+#
+# 1. "CURRENT_PATH" is current remote path being listed.
+# 2. "DURATION_SECONDS" is directory read duration.
+# 3. "IS_RETRY" indicates whether this attempt is a retry attempt.
+# 4. "IS_FAILURE" indicates whether this attempt failed.
+#
+# Returns: None.
+# --------------------------------------------------------------------------
+    def _record_directory_read(
+        self,
+        CURRENT_PATH: str,
+        DURATION_SECONDS: float,
+        IS_RETRY: bool,
+        IS_FAILURE: bool,
+    ) -> None:
+        with self._stats_lock:
+            self._traversal_stats["dir_reads"] += 1
+            if IS_RETRY:
+                self._traversal_stats["dir_retries"] += 1
+            if IS_FAILURE:
+                self._traversal_stats["dir_failures"] += 1
+
+            if DURATION_SECONDS < TRAVERSAL_SLOW_DIR_SECONDS:
+                return
+
+            SLOW_DIRS = list(self._traversal_stats.get("slow_dirs", []))
+            SLOW_DIRS.append(
+                {
+                    "path": CURRENT_PATH or "/",
+                    "duration_seconds": round(DURATION_SECONDS, 3),
+                }
+            )
+            SLOW_DIRS.sort(key=lambda ITEM: float(ITEM.get("duration_seconds", 0.0)), reverse=True)
+            self._traversal_stats["slow_dirs"] = SLOW_DIRS[:TRAVERSAL_SLOW_DIR_LIMIT]
 
 # --------------------------------------------------------------------------
 # This function aligns cookie and session paths with an
@@ -200,6 +318,7 @@ class ICloudDriveClient:
         if self.api is None:
             return []
 
+        self._reset_traversal_stats()
         DRIVE_ROOT = self.api.drive
 
         if self.config.traversal_workers == 1:
@@ -217,11 +336,17 @@ class ICloudDriveClient:
 # --------------------------------------------------------------------------
     def _walk_node_parallel(self, ROOT_NODE: Any, ROOT_PATH: str) -> list[RemoteEntry]:
         RESULT: list[RemoteEntry] = []
+        DIRECTORIES_COMPLETED = 0
 
         with ThreadPoolExecutor(max_workers=self.config.traversal_workers) as EXECUTOR:
             FUTURES = {
                 EXECUTOR.submit(self._walk_node_shallow, ROOT_NODE, ROOT_PATH): ROOT_PATH,
             }
+            self._record_traversal_queue_state(
+                DIRECTORIES_COMPLETED,
+                len(FUTURES),
+                min(len(FUTURES), self.config.traversal_workers),
+            )
 
             while FUTURES:
                 DONE_FUTURES, _ = wait(FUTURES.keys(), return_when=FIRST_COMPLETED)
@@ -229,12 +354,19 @@ class ICloudDriveClient:
                 for FUTURE in DONE_FUTURES:
                     del FUTURES[FUTURE]
                     ENTRIES, CHILD_DIRECTORIES = FUTURE.result()
+                    DIRECTORIES_COMPLETED += 1
                     RESULT.extend(ENTRIES)
 
                     for CHILD_PATH, CHILD_NODE in CHILD_DIRECTORIES:
                         FUTURES[
                             EXECUTOR.submit(self._walk_node_shallow, CHILD_NODE, CHILD_PATH)
                         ] = CHILD_PATH
+
+                self._record_traversal_queue_state(
+                    DIRECTORIES_COMPLETED,
+                    len(FUTURES),
+                    min(len(FUTURES), self.config.traversal_workers),
+                )
 
         return sorted(RESULT, key=lambda ENTRY: ENTRY.path)
 
@@ -251,7 +383,7 @@ class ICloudDriveClient:
         NODE: Any,
         CURRENT_PATH: str,
     ) -> tuple[list[RemoteEntry], list[tuple[str, Any]]]:
-        DIRECTORY_INFO = self._node_dir(NODE)
+        DIRECTORY_INFO = self._node_dir(NODE, CURRENT_PATH)
         DIRS = DIRECTORY_INFO.get("dirs", [])
         FILES = DIRECTORY_INFO.get("files", [])
         NAMES = DIRECTORY_INFO.get("names", [])
@@ -294,6 +426,7 @@ class ICloudDriveClient:
             IS_DIR = self._child_is_dir(CHILD)
 
             if IS_DIR:
+                self._record_traversal_entry(True)
                 ENTRIES.append(
                     RemoteEntry(
                         path=RELATIVE_PATH,
@@ -305,6 +438,7 @@ class ICloudDriveClient:
                 CHILD_DIRECTORIES.append((RELATIVE_PATH, CHILD))
                 continue
 
+            self._record_traversal_entry(False)
             ENTRIES.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
@@ -343,6 +477,7 @@ class ICloudDriveClient:
                 continue
 
             RELATIVE_PATH = f"{CURRENT_PATH}/{NAME}".strip("/")
+            self._record_traversal_entry(True)
             ENTRIES.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
@@ -370,15 +505,36 @@ class ICloudDriveClient:
 #
 # Returns: Directory payload when available, otherwise None.
 # --------------------------------------------------------------------------
-    def _read_dir_payload_with_retry(self, NODE: Any) -> Any | None:
+    def _read_dir_payload_with_retry(self, NODE: Any, CURRENT_PATH: str = "") -> Any | None:
         ATTEMPT = 0
 
         while ATTEMPT < DIR_RETRY_ATTEMPTS:
+            STARTED_EPOCH = time.monotonic()
+            IS_RETRY = ATTEMPT > 0
             try:
-                return NODE.dir()
+                PAYLOAD = NODE.dir()
+                self._record_directory_read(
+                    CURRENT_PATH,
+                    time.monotonic() - STARTED_EPOCH,
+                    IS_RETRY,
+                    False,
+                )
+                return PAYLOAD
             except (AttributeError, NotADirectoryError, TypeError, ValueError):
+                self._record_directory_read(
+                    CURRENT_PATH,
+                    time.monotonic() - STARTED_EPOCH,
+                    IS_RETRY,
+                    True,
+                )
                 return None
             except Exception:
+                self._record_directory_read(
+                    CURRENT_PATH,
+                    time.monotonic() - STARTED_EPOCH,
+                    IS_RETRY,
+                    True,
+                )
                 ATTEMPT += 1
 
                 if ATTEMPT >= DIR_RETRY_ATTEMPTS:
@@ -411,7 +567,7 @@ class ICloudDriveClient:
     def _walk_node(self, NODE: Any, CURRENT_PATH: str) -> list[RemoteEntry]:
         RESULT: list[RemoteEntry] = []
 
-        DIRECTORY_INFO = self._node_dir(NODE)
+        DIRECTORY_INFO = self._node_dir(NODE, CURRENT_PATH)
         DIRS = DIRECTORY_INFO.get("dirs", [])
         FILES = DIRECTORY_INFO.get("files", [])
         NAMES = DIRECTORY_INFO.get("names", [])
@@ -432,8 +588,8 @@ class ICloudDriveClient:
 #
 # Returns: Dictionary containing "dirs" and "files" lists.
 # --------------------------------------------------------------------------
-    def _node_dir(self, NODE: Any) -> dict[str, Any]:
-        PAYLOAD = self._read_dir_payload_with_retry(NODE)
+    def _node_dir(self, NODE: Any, CURRENT_PATH: str = "") -> dict[str, Any]:
+        PAYLOAD = self._read_dir_payload_with_retry(NODE, CURRENT_PATH)
 
         if PAYLOAD is None:
             return {"dirs": [], "files": [], "names": []}
@@ -541,6 +697,7 @@ class ICloudDriveClient:
             IS_DIR = self._child_is_dir(CHILD)
 
             if IS_DIR:
+                self._record_traversal_entry(True)
                 RESULT.append(
                     RemoteEntry(
                         path=RELATIVE_PATH,
@@ -552,6 +709,7 @@ class ICloudDriveClient:
                 RESULT.extend(self._walk_node(CHILD, RELATIVE_PATH))
                 continue
 
+            self._record_traversal_entry(False)
             RESULT.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
@@ -652,6 +810,7 @@ class ICloudDriveClient:
                 continue
 
             RELATIVE_PATH = f"{CURRENT_PATH}/{NAME}".strip("/")
+            self._record_traversal_entry(True)
             RESULT.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
@@ -690,6 +849,7 @@ class ICloudDriveClient:
             RELATIVE_PATH = f"{CURRENT_PATH}/{NAME}".strip("/")
             SIZE = self._item_size(ITEM)
             MODIFIED = self._item_modified(ITEM)
+            self._record_traversal_entry(False)
             RESULT.append(
                 RemoteEntry(
                     path=RELATIVE_PATH,
