@@ -57,7 +57,7 @@ python3 -m coverage run -m unittest -q
 python3 -m coverage report -m
 ```
 
-## Read this next
+## Detailed documentation
 
 - [CONFIGURATION.md](CONFIGURATION.md): env variables, paths, and config layout.
 - [SCHEDULING.md](SCHEDULING.md): schedule modes, compatibility, and manual
@@ -70,3 +70,5 @@ python3 -m coverage report -m
 ## License
 
 This project is provided under the GNU General Public License v3.0.
+
+You can use, modify, and redistribute this project, but any redistributed modified version must also remain under GPL-3.0 and include the source code.
