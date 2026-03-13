@@ -661,7 +661,9 @@ def list_entries_with_progress(
                         "Traversal read detail: "
                         f"dir_reads={STATS.get('dir_reads', 0)}, "
                         f"retries={STATS.get('dir_retries', 0)}, "
-                        f"failures={STATS.get('dir_failures', 0)}",
+                        f"non_directory={STATS.get('dir_non_directory', 0)}, "
+                        f"retryable_errors={STATS.get('dir_retryable_errors', 0)}, "
+                        f"hard_failures={STATS.get('dir_hard_failures', 0)}",
                     )
                     if SLOW_TOP:
                         log_line(
@@ -737,7 +739,9 @@ def list_entries_with_progress(
                     "Traversal read detail: "
                     f"dir_reads={STATS.get('dir_reads', 0)}, "
                     f"retries={STATS.get('dir_retries', 0)}, "
-                    f"failures={STATS.get('dir_failures', 0)}",
+                    f"non_directory={STATS.get('dir_non_directory', 0)}, "
+                    f"retryable_errors={STATS.get('dir_retryable_errors', 0)}, "
+                    f"hard_failures={STATS.get('dir_hard_failures', 0)}",
                 )
                 if SLOW_TOP:
                     log_line(LOG_FILE, "debug", f"Traversal slow-path detail: {SLOW_TOP}")

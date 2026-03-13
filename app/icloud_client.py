@@ -68,7 +68,9 @@ class ICloudDriveClient:
             "directories_discovered": 0,
             "dir_reads": 0,
             "dir_retries": 0,
-            "dir_failures": 0,
+            "dir_non_directory": 0,
+            "dir_retryable_errors": 0,
+            "dir_hard_failures": 0,
             "slow_dirs": [],
         }
 
@@ -161,7 +163,8 @@ class ICloudDriveClient:
 # 1. "CURRENT_PATH" is current remote path being listed.
 # 2. "DURATION_SECONDS" is directory read duration.
 # 3. "IS_RETRY" indicates whether this attempt is a retry attempt.
-# 4. "IS_FAILURE" indicates whether this attempt failed.
+# 4. "STATUS" is one of: "ok", "non_directory", "retryable_error",
+#    "hard_failure".
 #
 # Returns: None.
 # --------------------------------------------------------------------------
@@ -170,14 +173,18 @@ class ICloudDriveClient:
         CURRENT_PATH: str,
         DURATION_SECONDS: float,
         IS_RETRY: bool,
-        IS_FAILURE: bool,
+        STATUS: str,
     ) -> None:
         with self._stats_lock:
             self._traversal_stats["dir_reads"] += 1
             if IS_RETRY:
                 self._traversal_stats["dir_retries"] += 1
-            if IS_FAILURE:
-                self._traversal_stats["dir_failures"] += 1
+                self._traversal_stats["dir_retryable_errors"] += 1
+
+            if STATUS == "non_directory":
+                self._traversal_stats["dir_non_directory"] += 1
+            elif STATUS == "hard_failure":
+                self._traversal_stats["dir_hard_failures"] += 1
 
             if DURATION_SECONDS < TRAVERSAL_SLOW_DIR_SECONDS:
                 return
@@ -542,15 +549,23 @@ class ICloudDriveClient:
                     CURRENT_PATH,
                     time.monotonic() - STARTED_EPOCH,
                     IS_RETRY,
-                    False,
+                    "ok",
                 )
                 return PAYLOAD
-            except (AttributeError, NotADirectoryError, TypeError, ValueError):
+            except (AttributeError, NotADirectoryError, TypeError):
                 self._record_directory_read(
                     CURRENT_PATH,
                     time.monotonic() - STARTED_EPOCH,
                     IS_RETRY,
-                    True,
+                    "non_directory",
+                )
+                return None
+            except ValueError:
+                self._record_directory_read(
+                    CURRENT_PATH,
+                    time.monotonic() - STARTED_EPOCH,
+                    IS_RETRY,
+                    "hard_failure",
                 )
                 return None
             except Exception:
@@ -558,7 +573,7 @@ class ICloudDriveClient:
                     CURRENT_PATH,
                     time.monotonic() - STARTED_EPOCH,
                     IS_RETRY,
-                    True,
+                    "hard_failure",
                 )
                 ATTEMPT += 1
 

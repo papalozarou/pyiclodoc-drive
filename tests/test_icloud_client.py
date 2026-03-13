@@ -316,6 +316,18 @@ class TestICloudClientTraversal(unittest.TestCase):
 
             self.assertTrue(CLIENT._child_is_dir(FOLDER_LIKE))
 
+    def test_child_is_dir_records_non_directory_metric(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            FILE_LIKE = Mock()
+            FILE_LIKE.dir.side_effect = NotADirectoryError("file.bin")
+
+            self.assertFalse(CLIENT._child_is_dir(FILE_LIKE))
+            STATS = CLIENT.get_traversal_stats_snapshot()
+            self.assertEqual(STATS.get("dir_non_directory", 0), 1)
+            self.assertEqual(STATS.get("dir_hard_failures", 0), 0)
+
     def test_child_is_dir_uses_explicit_false_folder_flags(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
