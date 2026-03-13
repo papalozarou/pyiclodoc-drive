@@ -27,6 +27,7 @@ from app.syncer import (
     is_retryable_transfer_error,
     needs_transfer,
     normalise_transfer_reason,
+    package_signature,
     perform_incremental_sync,
     PROGRESS_LOG_SEPARATOR,
     transfer_if_required,
@@ -125,6 +126,30 @@ class TestSyncerHelpers(unittest.TestCase):
                 "is_dir": False,
                 "size": 10,
                 "modified": "2026-03-07T12:00:00Z",
+            }
+        }
+
+        self.assertFalse(needs_transfer(ENTRY, MANIFEST))
+
+# --------------------------------------------------------------------------
+# This test confirms package entries use package signatures for transfer
+# decisions.
+# --------------------------------------------------------------------------
+    def test_no_transfer_for_unchanged_package_signature(self) -> None:
+        ENTRY = RemoteEntry(
+            path="docs/archive.bundle",
+            is_dir=False,
+            size=10,
+            modified="2026-03-07T12:00:00Z",
+        )
+        MANIFEST = {
+            "docs/archive.bundle": {
+                "is_dir": False,
+                "entry_kind": "package",
+                "size": 10,
+                "modified": "2026-03-07T12:00:00Z",
+                "package_signature": package_signature(ENTRY),
+                "package_state": "package_reconciled",
             }
         }
 
@@ -602,6 +627,8 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(SUMMARY.transferred_files, 1)
         self.assertEqual(SUMMARY.error_files, 0)
         self.assertIn("docs/archive.bundle", NEW_MANIFEST)
+        self.assertEqual(NEW_MANIFEST["docs/archive.bundle"]["entry_kind"], "package")
+        self.assertEqual(NEW_MANIFEST["docs/archive.bundle"]["package_state"], "package")
 
 # --------------------------------------------------------------------------
 # This test confirms delete-removed mode prunes stale local files and
@@ -675,6 +702,33 @@ class TestSyncerHelpers(unittest.TestCase):
             )
 
             self.assertTrue((ROOT_DIR / "docs" / "stale.txt").exists())
+
+# --------------------------------------------------------------------------
+# This test confirms reconciled package entries persist package metadata in
+# the manifest for future transfer decisions.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_persists_reconciled_package_metadata(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/archive.bundle", False, 4, "2026-03-07T12:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/archive.bundle": False})
+        CLIENT.package_results["docs/archive.bundle"] = False
+        CLIENT.package_failure_reasons["docs/archive.bundle"] = "package_item_missing"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            PACKAGE_DIR = ROOT_DIR / "docs" / "archive.bundle"
+            PACKAGE_DIR.mkdir(parents=True, exist_ok=True)
+            (PACKAGE_DIR / "child.dat").write_bytes(b"x")
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, ROOT_DIR, {})
+
+        self.assertEqual(SUMMARY.error_files, 0)
+        self.assertEqual(SUMMARY.transferred_files, 1)
+        self.assertEqual(NEW_MANIFEST["docs/archive.bundle"]["entry_kind"], "package")
+        self.assertEqual(
+            NEW_MANIFEST["docs/archive.bundle"]["package_state"],
+            "package_reconciled",
+        )
 
 # --------------------------------------------------------------------------
 # This test confirms transient exceptions are retried before succeeding.

@@ -185,11 +185,40 @@ def collect_mismatches(
 # Returns: Dictionary payload persisted in the incremental manifest.
 # ------------------------------------------------------------------------------
 def entry_metadata(ENTRY: RemoteEntry) -> dict[str, Any]:
+    ENTRY_KIND = "dir" if ENTRY.is_dir else "file"
     return {
         "is_dir": ENTRY.is_dir,
+        "entry_kind": ENTRY_KIND,
         "size": ENTRY.size,
         "modified": ENTRY.modified,
     }
+
+
+# ------------------------------------------------------------------------------
+# This function returns manifest metadata for package-like entries.
+#
+# 1. "ENTRY" is a remote file metadata record represented as a package.
+# 2. "PACKAGE_STATE" is package transfer state token.
+#
+# Returns: Dictionary payload persisted in the incremental manifest.
+# ------------------------------------------------------------------------------
+def package_entry_metadata(ENTRY: RemoteEntry, PACKAGE_STATE: str) -> dict[str, Any]:
+    METADATA = entry_metadata(ENTRY)
+    METADATA["entry_kind"] = "package"
+    METADATA["package_state"] = PACKAGE_STATE
+    METADATA["package_signature"] = package_signature(ENTRY)
+    return METADATA
+
+
+# ------------------------------------------------------------------------------
+# This function computes a stable package signature from remote entry data.
+#
+# 1. "ENTRY" is the remote package-like entry.
+#
+# Returns: Stable signature string for package transfer decisions.
+# ------------------------------------------------------------------------------
+def package_signature(ENTRY: RemoteEntry) -> str:
+    return f"{ENTRY.modified}|{ENTRY.size}"
 
 
 # ------------------------------------------------------------------------------
@@ -208,6 +237,10 @@ def needs_transfer(ENTRY: RemoteEntry, MANIFEST: dict[str, dict[str, Any]]) -> b
 
     if bool(EXISTING.get("is_dir", False)):
         return True
+
+    if str(EXISTING.get("entry_kind", "file")) == "package":
+        EXISTING_SIGNATURE = str(EXISTING.get("package_signature", ""))
+        return EXISTING_SIGNATURE != package_signature(ENTRY)
 
     if int(EXISTING.get("size", -1)) != ENTRY.size:
         return True
@@ -299,6 +332,7 @@ def perform_incremental_sync(
 
     for ENTRY in FILES:
         SHOULD_TRANSFER = needs_transfer(ENTRY, MANIFEST)
+        EXISTING_METADATA = MANIFEST.get(ENTRY.path)
         ENTRY_METADATA = entry_metadata(ENTRY)
 
         if SHOULD_TRANSFER and USE_LOCAL_RECONCILIATION:
@@ -316,7 +350,14 @@ def perform_incremental_sync(
                 )
         else:
             SKIPPED += 1
-            NEW_MANIFEST[ENTRY.path] = ENTRY_METADATA
+            if (
+                EXISTING_METADATA is not None
+                and str(EXISTING_METADATA.get("entry_kind", "file")) == "package"
+            ):
+                PACKAGE_STATE = str(EXISTING_METADATA.get("package_state", "package_reconciled"))
+                NEW_MANIFEST[ENTRY.path] = package_entry_metadata(ENTRY, PACKAGE_STATE)
+            else:
+                NEW_MANIFEST[ENTRY.path] = ENTRY_METADATA
             if LOG_FILE is not None:
                 if USE_LOCAL_RECONCILIATION and ENTRY.path in LOCAL_FILE_INDEX:
                     log_line(
@@ -405,7 +446,10 @@ def perform_incremental_sync(
                         apply_remote_modified_time(LOCAL_PATH, ENTRY.modified, LOG_FILE)
                         TRANSFERRED += 1
                         TRANSFERRED_BYTES += max(ENTRY.size, 0)
-                        NEW_MANIFEST[ENTRY.path] = TRANSFER_CANDIDATE_METADATA[ENTRY.path]
+                        if TRANSFER_MODE in {"package", "package_reconciled"}:
+                            NEW_MANIFEST[ENTRY.path] = package_entry_metadata(ENTRY, TRANSFER_MODE)
+                        else:
+                            NEW_MANIFEST[ENTRY.path] = TRANSFER_CANDIDATE_METADATA[ENTRY.path]
                         if LOG_FILE is not None:
                             if ATTEMPT_COUNT > 1:
                                 log_line(
