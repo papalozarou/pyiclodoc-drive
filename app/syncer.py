@@ -37,6 +37,21 @@ TRANSFER_RETRY_ERROR_MARKERS = (
     "connection reset",
 )
 RECONCILE_MTIME_TOLERANCE_SECONDS = 2.0
+KNOWN_PACKAGE_SUFFIXES = (
+    ".app",
+    ".band",
+    ".bundle",
+    ".graffle",
+    ".key",
+    ".linea",
+    ".numbers",
+    ".pages",
+    ".playground",
+    ".playgroundbook",
+    ".pxm",
+    ".rtfd",
+    ".sketch",
+)
 
 
 # ------------------------------------------------------------------------------
@@ -1000,6 +1015,7 @@ def transfer_if_required(
 
     LOCAL_PATH = OUTPUT_DIR / ENTRY.path
     HAS_LOCAL_DIRECTORY = LOCAL_PATH.exists() and LOCAL_PATH.is_dir()
+    IS_KNOWN_PACKAGE_PATH = is_known_package_path(ENTRY.path)
     ATTEMPT = 1
 
     while ATTEMPT <= TRANSFER_RETRY_ATTEMPTS:
@@ -1012,6 +1028,17 @@ def transfer_if_required(
                 PACKAGE_REASON = CLIENT.get_last_download_failure_reason().strip().lower()
                 if PACKAGE_REASON in {"package_item_missing", "package_children_unavailable"}:
                     return True, ATTEMPT, "package_reconciled"
+
+                return False, ATTEMPT, PACKAGE_REASON or "package_download_failed"
+
+            if IS_KNOWN_PACKAGE_PATH:
+                IS_PACKAGE_SUCCESS = CLIENT.download_package_tree(ENTRY.path, LOCAL_PATH)
+                if IS_PACKAGE_SUCCESS:
+                    return True, ATTEMPT, "package"
+
+                PACKAGE_REASON = CLIENT.get_last_download_failure_reason().strip().lower()
+                if PACKAGE_REASON in {"package_item_missing", "package_children_unavailable"}:
+                    return False, ATTEMPT, "known_package_metadata_unavailable"
 
                 return False, ATTEMPT, PACKAGE_REASON or "package_download_failed"
 
@@ -1089,6 +1116,21 @@ def normalise_transfer_reason(RAW_REASON: str) -> str:
         return PRIMARY_REASON
 
     return "unknown"
+
+
+# ------------------------------------------------------------------------------
+# This function checks whether a remote path uses a known package suffix.
+#
+# 1. "REMOTE_PATH" is slash-separated iCloud path.
+#
+# Returns: True when path suffix matches known package types.
+# ------------------------------------------------------------------------------
+def is_known_package_path(REMOTE_PATH: str) -> bool:
+    PATH_LOWER = REMOTE_PATH.strip().lower()
+    if not PATH_LOWER:
+        return False
+
+    return PATH_LOWER.endswith(KNOWN_PACKAGE_SUFFIXES)
 
 
 # ------------------------------------------------------------------------------

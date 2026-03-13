@@ -24,6 +24,7 @@ from app.syncer import (
     get_transfer_failure_reason,
     get_auto_worker_count,
     get_transfer_worker_count,
+    is_known_package_path,
     is_retryable_transfer_error,
     needs_transfer,
     normalise_transfer_reason,
@@ -180,19 +181,27 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(RESULT, "write_failed")
 
 # --------------------------------------------------------------------------
+# This test confirms package suffix detection recognises known package types.
+# --------------------------------------------------------------------------
+    def test_is_known_package_path_identifies_supported_suffixes(self) -> None:
+        self.assertTrue(is_known_package_path("docs/archive.bundle"))
+        self.assertTrue(is_known_package_path("Swift Playground/My Playground.playgroundbook"))
+        self.assertFalse(is_known_package_path("docs/file.txt"))
+
+# --------------------------------------------------------------------------
 # This test confirms transfer fallback keeps the initial file failure reason
 # when package fallback only reports a non-directory marker.
 # --------------------------------------------------------------------------
     def test_transfer_if_required_keeps_primary_reason_on_non_directory_fallback(self) -> None:
         ENTRY = RemoteEntry(
-            path="docs/archive.bundle",
+            path="docs/archive.pkg",
             is_dir=False,
             size=4,
             modified="2026-03-07T12:00:00Z",
         )
-        CLIENT = FakeClient([ENTRY], {"docs/archive.bundle": False})
-        CLIENT.package_results["docs/archive.bundle"] = False
-        CLIENT.package_failure_reasons["docs/archive.bundle"] = "not_directory_node"
+        CLIENT = FakeClient([ENTRY], {"docs/archive.pkg": False})
+        CLIENT.package_results["docs/archive.pkg"] = False
+        CLIENT.package_failure_reasons["docs/archive.pkg"] = "not_directory_node"
 
         with tempfile.TemporaryDirectory() as TMPDIR:
             IS_SUCCESS, ATTEMPT, REASON = transfer_if_required(
@@ -237,6 +246,35 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertTrue(IS_SUCCESS)
         self.assertEqual(ATTEMPT, 1)
         self.assertEqual(REASON, "package_reconciled")
+        self.assertEqual(CLIENT.download_calls, 0)
+        self.assertEqual(CLIENT.package_calls, 1)
+
+# --------------------------------------------------------------------------
+# This test confirms known package paths use package-first handling and
+# emit explicit metadata-unavailable diagnostics when needed.
+# --------------------------------------------------------------------------
+    def test_transfer_if_required_flags_known_package_metadata_unavailable(self) -> None:
+        ENTRY = RemoteEntry(
+            path="docs/archive.bundle",
+            is_dir=False,
+            size=4,
+            modified="2026-03-07T12:00:00Z",
+        )
+        CLIENT = FakeClient([ENTRY], {"docs/archive.bundle": False})
+        CLIENT.package_results["docs/archive.bundle"] = False
+        CLIENT.package_failure_reasons["docs/archive.bundle"] = "package_item_missing"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            IS_SUCCESS, ATTEMPT, REASON = transfer_if_required(
+                CLIENT,
+                Path(TMPDIR),
+                ENTRY,
+                True,
+            )
+
+        self.assertFalse(IS_SUCCESS)
+        self.assertEqual(ATTEMPT, 1)
+        self.assertEqual(REASON, "known_package_metadata_unavailable")
         self.assertEqual(CLIENT.download_calls, 0)
         self.assertEqual(CLIENT.package_calls, 1)
 
@@ -622,7 +660,7 @@ class TestSyncerHelpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as TMPDIR:
             SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), {})
 
-        self.assertEqual(CLIENT.download_calls, 1)
+        self.assertEqual(CLIENT.download_calls, 0)
         self.assertEqual(CLIENT.package_calls, 1)
         self.assertEqual(SUMMARY.transferred_files, 1)
         self.assertEqual(SUMMARY.error_files, 0)
