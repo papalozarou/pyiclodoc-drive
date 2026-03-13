@@ -26,6 +26,7 @@ from app.syncer import (
     get_transfer_worker_count,
     is_retryable_transfer_error,
     needs_transfer,
+    normalise_transfer_reason,
     perform_incremental_sync,
     PROGRESS_LOG_SEPARATOR,
     transfer_if_required,
@@ -144,6 +145,14 @@ class TestSyncerHelpers(unittest.TestCase):
     def test_get_transfer_failure_reason_combines_distinct_failures(self) -> None:
         RESULT = get_transfer_failure_reason("open_failed", "package_child_missing")
         self.assertEqual(RESULT, "open_failed; fallback=package_child_missing")
+
+# --------------------------------------------------------------------------
+# This test confirms transfer reason normalisation keeps the primary token
+# when fallback detail is present.
+# --------------------------------------------------------------------------
+    def test_normalise_transfer_reason_uses_primary_token(self) -> None:
+        RESULT = normalise_transfer_reason("write_failed; fallback=package_item_missing")
+        self.assertEqual(RESULT, "write_failed")
 
 # --------------------------------------------------------------------------
 # This test confirms transfer fallback keeps the initial file failure reason
@@ -374,6 +383,28 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertTrue(any("File skipped unchanged: docs/unchanged.txt" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Transfer planning detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Transfer execution detail:" in LINE for LINE in DEBUG_LINES))
+
+# --------------------------------------------------------------------------
+# This test confirms failed transfers emit aggregated failure reason
+# diagnostics for quick root-cause visibility.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_emits_failure_reason_summary(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/file.txt", False, 11, "2026-03-08T00:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/file.txt": False})
+        CLIENT.package_results["docs/file.txt"] = False
+        CLIENT.package_failure_reasons["docs/file.txt"] = "not_directory_node"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            LOG_FILE = Path(TMPDIR) / "iclouddd-worker.log"
+            with patch("app.syncer.log_line") as LOG_LINE:
+                perform_incremental_sync(CLIENT, Path(TMPDIR), {}, 0, LOG_FILE)
+
+        DEBUG_LINES = [CALL.args[2] for CALL in LOG_LINE.call_args_list if CALL.args[1] == "debug"]
+        self.assertTrue(
+            any("Transfer failure reason detail: download_failed=1" in LINE for LINE in DEBUG_LINES)
+        )
 
 # --------------------------------------------------------------------------
 # This test confirms info-level stage markers are emitted for traversal

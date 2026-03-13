@@ -282,6 +282,7 @@ def perform_incremental_sync(
     TRANSFERRED_BYTES = 0
     SKIPPED = 0
     ERRORS = 0
+    FAILURE_REASON_COUNTS: dict[str, int] = {}
 
     if USE_LOCAL_RECONCILIATION:
         if LOG_FILE is not None:
@@ -389,6 +390,10 @@ def perform_incremental_sync(
                             flush=True,
                         )
                         ERRORS += 1
+                        ERROR_REASON = "worker_exception"
+                        FAILURE_REASON_COUNTS[ERROR_REASON] = (
+                            FAILURE_REASON_COUNTS.get(ERROR_REASON, 0) + 1
+                        )
                         EXISTING_METADATA = MANIFEST.get(ENTRY.path)
 
                         if EXISTING_METADATA is not None:
@@ -438,6 +443,10 @@ def perform_incremental_sync(
                         continue
 
                     ERRORS += 1
+                    FAILURE_REASON = normalise_transfer_reason(TRANSFER_MODE)
+                    FAILURE_REASON_COUNTS[FAILURE_REASON] = (
+                        FAILURE_REASON_COUNTS.get(FAILURE_REASON, 0) + 1
+                    )
                     EXISTING_METADATA = MANIFEST.get(ENTRY.path)
 
                     if EXISTING_METADATA is not None:
@@ -490,6 +499,16 @@ def perform_incremental_sync(
             "Transfer finished. "
             f"transferred={TRANSFERRED}, skipped={SKIPPED}, errors={ERRORS}.",
         )
+        if FAILURE_REASON_COUNTS:
+            DETAIL_TEXT = ", ".join(
+                f"{REASON}={COUNT}"
+                for REASON, COUNT in sorted(FAILURE_REASON_COUNTS.items())
+            )
+            log_line(
+                LOG_FILE,
+                "debug",
+                f"Transfer failure reason detail: {DETAIL_TEXT}",
+            )
 
     for ENTRY in DIRECTORIES:
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)
@@ -1007,6 +1026,25 @@ def get_transfer_failure_reason(FILE_REASON: str, PACKAGE_REASON: str) -> str:
         return FILE_TOKEN
 
     return f"{FILE_TOKEN}; fallback={PACKAGE_TOKEN}"
+
+
+# ------------------------------------------------------------------------------
+# This function normalises transfer failure reason strings for summary logging.
+#
+# 1. "RAW_REASON" is the reason returned by transfer execution.
+#
+# Returns: Canonical reason token used for aggregate diagnostics.
+# ------------------------------------------------------------------------------
+def normalise_transfer_reason(RAW_REASON: str) -> str:
+    CLEAN_REASON = RAW_REASON.strip().lower()
+    if not CLEAN_REASON:
+        return "unknown"
+
+    PRIMARY_REASON = CLEAN_REASON.split(";", 1)[0].strip()
+    if PRIMARY_REASON:
+        return PRIMARY_REASON
+
+    return "unknown"
 
 
 # ------------------------------------------------------------------------------
