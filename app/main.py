@@ -527,7 +527,7 @@ def format_telegram_event(
     DESCRIPTION: str,
     STATUS_LINES: list[str] | None = None,
 ) -> str:
-    LINES = [f"*{ICON} iCloudDD - {TITLE}*", DESCRIPTION]
+    LINES = [f"*{ICON} PCD Drive - {TITLE}*", DESCRIPTION]
 
     if STATUS_LINES:
         LINES.extend([LINE for LINE in STATUS_LINES if LINE.strip()])
@@ -612,10 +612,13 @@ def format_schedule_description(CONFIG: AppConfig, TRIGGER: str) -> str:
 def format_schedule_line(CONFIG: AppConfig, TRIGGER: str) -> str:
     SCHEDULE_DESCRIPTION = format_schedule_description(CONFIG, TRIGGER)
 
-    if TRIGGER == "manual":
-        return f"Schedule: Manual, then {SCHEDULE_DESCRIPTION}."
+    if TRIGGER == "scheduled":
+        return f"Scheduled {SCHEDULE_DESCRIPTION.lower()}."
 
-    return f"Schedule: {SCHEDULE_DESCRIPTION}."
+    if TRIGGER == "manual":
+        return f"Manual, then {SCHEDULE_DESCRIPTION.lower()}."
+
+    return f"{SCHEDULE_DESCRIPTION}."
 
 
 # ------------------------------------------------------------------------------
@@ -1060,7 +1063,7 @@ def main() -> int:
     LOG_FILE = CONFIG.logs_dir / "worker.log"
     TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
     HEARTBEAT_STOP_EVENT: threading.Event | None = None
-    STOP_STATUS = "Last status: Worker process exited."
+    STOP_STATUS = "Worker process exited."
 
     try:
         configure_keyring(CONFIG.config_dir)
@@ -1155,7 +1158,7 @@ def main() -> int:
                         ["Reason: Authentication incomplete."],
                     ),
                 )
-                STOP_STATUS = "Last status: One-shot backup skipped due to incomplete authentication."
+                STOP_STATUS = "One-shot backup skipped due to incomplete authentication."
                 return 2
 
             if AUTH_STATE.reauth_pending:
@@ -1168,15 +1171,15 @@ def main() -> int:
                         ["Reason: Reauthentication pending."],
                     ),
                 )
-                STOP_STATUS = "Last status: One-shot backup skipped due to pending reauthentication."
+                STOP_STATUS = "One-shot backup skipped due to pending reauthentication."
                 return 3
 
             if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
-                STOP_STATUS = "Last status: One-shot backup blocked by safety net."
+                STOP_STATUS = "One-shot backup blocked by safety net."
                 return 4
 
             run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, "one-shot")
-            STOP_STATUS = "Last status: Run completed and container exited."
+            STOP_STATUS = "Run completed and container exited."
             return 0
 
         BACKUP_REQUESTED = False

@@ -49,18 +49,18 @@ Messages use this compact structure:
 
 Current message templates include:
 
-- `*🟢 iCloudDD - Container started*`
-- `*🛑 iCloudDD - Container stopped*`
-- `*🔑 iCloudDD - Authentication required*`
-- `*🔑 iCloudDD - Reauthentication required*`
-- `*🔒 iCloudDD - Authentication complete*`
-- `*❌ iCloudDD - Authentication failed*`
-- `*📥 iCloudDD - Backup requested*`
-- `*⬇️ iCloudDD - Backup started*`
-- `*📦 iCloudDD - Backup complete*`
-- `*⏭️ iCloudDD - Backup skipped*`
-- `*⚠️ iCloudDD - Safety net blocked*`
-- `*📣 iCloudDD - Reauth reminder*`
+- `*🟢 PCD Drive - Container started*`
+- `*🛑 PCD Drive - Container stopped*`
+- `*🔑 PCD Drive - Authentication required*`
+- `*🔑 PCD Drive - Reauthentication required*`
+- `*🔒 PCD Drive - Authentication complete*`
+- `*❌ PCD Drive - Authentication failed*`
+- `*📥 PCD Drive - Backup requested*`
+- `*⬇️ PCD Drive - Backup started*`
+- `*📦 PCD Drive - Backup complete*`
+- `*⏭️ PCD Drive - Backup skipped*`
+- `*⚠️ PCD Drive - Safety net blocked*`
+- `*📣 PCD Drive - Reauth reminder*`
 
 Backup completion messages include:
 
@@ -72,8 +72,8 @@ Backup completion messages include:
 
 Backup start messages include:
 
-- `Schedule: <plain English schedule>`
-- `Schedule: Manual, then <plain English schedule>`
+- `Scheduled <plain English schedule>`
+- `Manual, then <plain English schedule>`
 
 Safety-net blocked messages include an explicit expected ownership line:
 

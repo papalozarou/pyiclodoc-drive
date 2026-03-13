@@ -204,7 +204,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertFalse(NEW_STATE.reauth_pending)
             CLIENT.complete_authentication.assert_called_once_with("123456")
             self.assertIn("Authentication complete", NOTIFY.call_args[0][1])
-            self.assertIn("*🔒 iCloudDD - Authentication complete*", NOTIFY.call_args[0][1])
+            self.assertIn("*🔒 PCD Drive - Authentication complete*", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
 # This test confirms attempt_auth MFA-required branch sets auth pending.
@@ -388,7 +388,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertIn("Loaded manifest entries:", LOG_LINE.call_args_list[0].args[2])
             self.assertEqual(LOG_LINE.call_args_list[1].args[1], "debug")
             self.assertIn("Sync summary detail:", LOG_LINE.call_args_list[1].args[2])
-            self.assertIn("Schedule: Every 60 minutes.", NOTIFY.call_args_list[0].args[1])
+            self.assertIn("Scheduled every 60 minutes.", NOTIFY.call_args_list[0].args[1])
             self.assertNotIn("Mode:", NOTIFY.call_args_list[0].args[1])
             self.assertNotIn("Trigger:", NOTIFY.call_args_list[0].args[1])
             self.assertIn("Average speed:", NOTIFY.call_args_list[1].args[1])
