@@ -2,11 +2,11 @@
 
 This file defines various coding standards for agents to adhere to.
 
-## Scope and precedence
+## Core policy
 - MUST: Treat this file as the default project policy for all files in this repository.
 - MUST: If instructions conflict, ask for clarification before editing files.
 
-## Agent workflow
+## Workflow and approvals
 - MUST: Never assume — ask for clarification when requirements are unclear
 - MUST: Until told otherwise, detail suggestions before any live edits
 - MUST: Ask for explicit permission before making edits
@@ -17,14 +17,16 @@ This file defines various coding standards for agents to adhere to.
 - MUST: Summarise what changed and suggest updates to this file when useful patterns emerge
 - MUST: Ensure the repository is initialised with Git and has at least one baseline commit before any coding changes begin
 - MUST: If no baseline commit exists, stop and request user approval to create an initial commit before proceeding with code edits
-- MUST: After each block of suggested and user-approved changes is applied, explicitly suggest a commit (with a clear commit message) before moving to the next change block
 - MUST: When a new rule is requested, ask whether it should be project-local (`AGENTS.local.md`) or added to the shared template (`AGENTS.md`) before editing rules
-- MUST: If you propose implementing on a specific branch, perform the work on that branch first and only merge to main after user confirmation
-- MUST: Before any edits, state current branch and intended target branch in one line
 - SHOULD: If the rule is project-local, suggest creating or updating `AGENTS.local.md` and ensure it is ignored by baseline ignore files
 - SHOULD: If a requested change set is focused but substantial, suggest working on a dedicated Git branch before applying edits, creating the branch if necessary
 
-## README.md and comments
+## Branch and commit flow
+- MUST: Before any edits, state current branch and intended target branch in one line
+- MUST: If you propose implementing on a specific branch, perform the work on that branch first and only merge to main after user confirmation
+- MUST: After each block of suggested and user-approved changes is applied, explicitly suggest a commit (with a clear commit message) before moving to the next change block
+
+## Documentation
 - MUST: Use UK English, not US
 - MUST: Ensure a README.md exists
 - MUST: Match the writing style from available examples in my [GitHub repository](https://github.com/papalozarou) and [blog](https://lozworld.com)
@@ -48,6 +50,8 @@ This file defines various coding standards for agents to adhere to.
 - MUST: Keep caveats short, concrete, and free from defensive over-explanation
 - MUST: Before finalising documentation, run a style pass for brevity, UK spelling, consistency, and ambiguity
 - MUST: If behaviour changes in code, document old versus new behaviour where confusion is likely
+
+## Source comments
 - MUST: Use the same syntax and formatting for comments as in my other GitHub projects
 - MUST: Write verbose, highly structured, comments that would enable debugging at 2am
 - SHOULD: Add source links for non-obvious logic (for example Stack Overflow or official documentation)
@@ -75,7 +79,7 @@ Examples:
 - MUST: Use paragraph spacing in comments, including blank comment lines between intro, argument lists, `N.B.`, and notes or reference sections
 - MUST: Keep source-code comment lines at or below 80 characters, including separator lines
 
-## Coding
+## General coding rules
 - MUST: Prefer DRY standards
 - MUST NOT: Use nested for-loops or nested if-statements
 - MUST: Prefer separation of concerns when writing functions and scripts
@@ -89,9 +93,15 @@ Examples:
 - MUST: Refactor instead of layering workarounds when existing code structure is weak
 - MUST: Remove dead code, debug artefacts, and commented-out code before completion
 - SHOULD: Use TDD where practical
+
+## Repository and template files
 - MUST: Add generic, project-relevant ignore files (for example git and docker), while keeping AGENTS.md tracked for submodule-based reuse across projects
 - MUST: Proactively suggest an appropriate licence for each new repository based on intended usage (for example MIT, Apache-2.0, GPL-3.0-only, or proprietary)
 - MUST: If no licence choice is provided, ask for confirmation before adding any licence file
+- MUST: Add `TODO.md` to baseline ignore files to keep local project task tracking out of version control unless explicitly requested
+- MUST: In ignore files, order declarations within each section as follows: 1) dot-prefixed entries (".name"), 2) wildcard entries ("*name"), 3) exact matches; and keep alphabetical order within each group
+
+## Docker and Compose
 - MUST: Use `compose.yml` for new example files; do not rename existing compose files unless explicitly requested
 - MUST: For example files, add `.example` as a filename suffix
 - MUST: Keep concrete compose files such as `compose.yml` and `docker-compose.yml` out of template repositories unless explicitly required
@@ -105,8 +115,8 @@ Examples:
 - MUST: For service-scoped variables, use three-character uppercase service codes (for example "TFK", "ATA", "RTT"), and keep related variable blocks in the same service order used in Compose files
 - MUST: For network variables, use "C_NW_<SCOPE>" for base ranges and "C_NW_<SCOPE>_<SVC>" for service IP assignments
 - MUST: In service blocks, use this key order unless project constraints require otherwise: "image", "container_name", "hostname", "build", "init", "networks", "ports", "expose", "mem_limit", "deploy", "secrets", "<<", "environment", "command", "volumes", "labels", "cap_drop", "read_only", "restart", "depends_on"
-- MUST: Add `TODO.md` to baseline ignore files to keep local project task tracking out of version control unless explicitly requested
-- MUST: In ignore files, order declarations within each section as follows: 1) dot-prefixed entries (".name"), 2) wildcard entries ("*name"), 3) exact matches; and keep alphabetical order within each group
+
+## Naming rules
 - MUST: Use UPPER_SNAKE_CASE for variable names by default unless language-specific standards override this
 - MUST: Only deviate from variable naming rules when required by external interfaces, libraries, or framework constraints
 - MUST: Name functions and methods using verbValue or verbObject patterns
@@ -118,7 +128,7 @@ Examples:
 - MUST: If external-interface constraints require a different name, isolate and document that exception directly above the affected code
 - SHOULD: Prefer local variables where practical in functions and methods
 
-## Language-specific standards
+## Language-specific rules
 - MUST: Language-specific rules override global naming rules when conflicts occur
 - MUST: For Python, use snake_case for functions and methods unless external interfaces require otherwise
 - MUST: For Python, use UPPER_SNAKE_CASE for variables, constants, and configuration identifiers
