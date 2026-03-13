@@ -824,7 +824,15 @@ class ICloudDriveClient:
             return False
 
         if not self._child_is_dir(ROOT_NODE):
-            self._set_download_failure_reason("not_directory_node")
+            IS_METADATA_SUCCESS = self._download_package_tree_from_parent_metadata(
+                REMOTE_PATH,
+                LOCAL_PATH,
+            )
+            if IS_METADATA_SUCCESS:
+                return True
+
+            if not self._last_download_failure_reason:
+                self._set_download_failure_reason("not_directory_node")
             return False
 
         IS_SUCCESS = self._download_package_node(ROOT_NODE, LOCAL_PATH)
@@ -911,6 +919,181 @@ class ICloudDriveClient:
             return False
 
         return True
+
+# --------------------------------------------------------------------------
+# This function exports package-like nodes using parent directory metadata
+# when direct directory traversal is not available from pyicloud.
+#
+# 1. "REMOTE_PATH" is slash-separated package path.
+# 2. "LOCAL_PATH" is package destination directory.
+#
+# Returns: True when package children are exported successfully.
+# --------------------------------------------------------------------------
+    def _download_package_tree_from_parent_metadata(
+        self,
+        REMOTE_PATH: str,
+        LOCAL_PATH: Path,
+    ) -> bool:
+        PARENT_PATH, ITEM_NAME = self._split_parent_path(REMOTE_PATH)
+        PACKAGE_ITEM = self._find_item_metadata(PARENT_PATH, ITEM_NAME)
+        if PACKAGE_ITEM is None:
+            self._set_download_failure_reason("package_item_missing")
+            return False
+
+        CHILD_ITEMS = self._package_child_items(PACKAGE_ITEM)
+        if not CHILD_ITEMS:
+            self._set_download_failure_reason("package_children_unavailable")
+            return False
+
+        return self._download_package_items_by_metadata(
+            REMOTE_PATH,
+            LOCAL_PATH,
+            CHILD_ITEMS,
+        )
+
+# --------------------------------------------------------------------------
+# This function recursively exports package child metadata to local files.
+#
+# 1. "PARENT_REMOTE_PATH" is package or subdirectory remote path.
+# 2. "PARENT_LOCAL_PATH" is matching local directory path.
+# 3. "CHILD_ITEMS" is ordered child item metadata list.
+#
+# Returns: True when all child items are exported.
+# --------------------------------------------------------------------------
+    def _download_package_items_by_metadata(
+        self,
+        PARENT_REMOTE_PATH: str,
+        PARENT_LOCAL_PATH: Path,
+        CHILD_ITEMS: list[tuple[str, dict[str, Any]]],
+    ) -> bool:
+        PARENT_LOCAL_PATH.mkdir(parents=True, exist_ok=True)
+
+        for ITEM_TYPE, ITEM in CHILD_ITEMS:
+            CHILD_NAME = self._item_name(ITEM)
+            if not CHILD_NAME:
+                continue
+
+            CHILD_REMOTE_PATH = f"{PARENT_REMOTE_PATH}/{CHILD_NAME}".strip("/")
+            CHILD_LOCAL_PATH = PARENT_LOCAL_PATH / CHILD_NAME
+            IS_DIRECTORY_ITEM = ITEM_TYPE == "dir"
+
+            if IS_DIRECTORY_ITEM:
+                NESTED_ITEMS = self._package_child_items(ITEM)
+                if not NESTED_ITEMS:
+                    self._set_download_failure_reason("package_children_unavailable")
+                    return False
+
+                if self._download_package_items_by_metadata(
+                    CHILD_REMOTE_PATH,
+                    CHILD_LOCAL_PATH,
+                    NESTED_ITEMS,
+                ):
+                    continue
+
+                return False
+
+            IS_SUCCESS, FAILURE_REASON = self._download_file_by_remote_path(
+                CHILD_REMOTE_PATH,
+                CHILD_LOCAL_PATH,
+            )
+            if IS_SUCCESS:
+                continue
+
+            self._set_download_failure_reason(FAILURE_REASON)
+            return False
+
+        return True
+
+# --------------------------------------------------------------------------
+# This function downloads a file by remote path without resetting global
+# failure state.
+#
+# 1. "REMOTE_PATH" is slash-separated iCloud Drive file path.
+# 2. "LOCAL_PATH" is destination file path.
+#
+# Returns: Tuple "(is_success, failure_reason)".
+# --------------------------------------------------------------------------
+    def _download_file_by_remote_path(
+        self,
+        REMOTE_PATH: str,
+        LOCAL_PATH: Path,
+    ) -> tuple[bool, str]:
+        FILE_OBJ = self._resolve_file_object(REMOTE_PATH)
+        if FILE_OBJ is None:
+            return False, "path_not_found"
+
+        if self._child_is_dir(FILE_OBJ):
+            return False, "directory_node"
+
+        return self._download_file_object(FILE_OBJ, LOCAL_PATH)
+
+# --------------------------------------------------------------------------
+# This function resolves parent path and item name from a remote path.
+#
+# 1. "REMOTE_PATH" is slash-separated iCloud Drive path.
+#
+# Returns: Tuple "(parent_path, item_name)".
+# --------------------------------------------------------------------------
+    def _split_parent_path(self, REMOTE_PATH: str) -> tuple[str, str]:
+        PARTS = [PART for PART in REMOTE_PATH.split("/") if PART]
+        if not PARTS:
+            return "", ""
+
+        ITEM_NAME = PARTS[-1].strip()
+        PARENT_PATH = "/".join(PARTS[:-1]).strip("/")
+        return PARENT_PATH, ITEM_NAME
+
+# --------------------------------------------------------------------------
+# This function finds a named item dictionary from parent metadata payload.
+#
+# 1. "PARENT_PATH" is slash-separated parent directory path.
+# 2. "ITEM_NAME" is target child name.
+#
+# Returns: Matching item metadata dictionary, otherwise None.
+# --------------------------------------------------------------------------
+    def _find_item_metadata(
+        self,
+        PARENT_PATH: str,
+        ITEM_NAME: str,
+    ) -> dict[str, Any] | None:
+        PARENT_NODE = self._resolve_file_object(PARENT_PATH)
+        if PARENT_NODE is None:
+            return None
+
+        PARENT_INFO = self._node_dir(PARENT_NODE)
+        SEARCH_ITEMS = PARENT_INFO.get("dirs", []) + PARENT_INFO.get("files", [])
+
+        for ITEM in SEARCH_ITEMS:
+            if not isinstance(ITEM, dict):
+                continue
+
+            NAME = self._item_name(ITEM)
+            if NAME == ITEM_NAME:
+                return ITEM
+
+        return None
+
+# --------------------------------------------------------------------------
+# This function extracts package child metadata from a package item payload.
+#
+# 1. "ITEM" is package metadata dictionary.
+#
+# Returns: Ordered list of tuples "(item_type, item_metadata)" where
+# "item_type" is either "dir" or "file".
+# --------------------------------------------------------------------------
+    def _package_child_items(self, ITEM: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+        NORMALISED = self._normalise_dir_payload(ITEM)
+        RESULT: list[tuple[str, dict[str, Any]]] = []
+
+        for DIR_ITEM in NORMALISED.get("dirs", []):
+            if isinstance(DIR_ITEM, dict):
+                RESULT.append(("dir", DIR_ITEM))
+
+        for FILE_ITEM in NORMALISED.get("files", []):
+            if isinstance(FILE_ITEM, dict):
+                RESULT.append(("file", FILE_ITEM))
+
+        return RESULT
 
 # --------------------------------------------------------------------------
 # This function collects unique child names from package directory metadata.

@@ -828,11 +828,13 @@ def transfer_if_required(
             if IS_SUCCESS:
                 return True, ATTEMPT, "file"
 
+            FILE_REASON = CLIENT.get_last_download_failure_reason().strip().lower()
             IS_PACKAGE_SUCCESS = CLIENT.download_package_tree(ENTRY.path, LOCAL_PATH)
             if IS_PACKAGE_SUCCESS:
                 return True, ATTEMPT, "package"
 
-            FAILURE_REASON = CLIENT.get_last_download_failure_reason() or "download_failed"
+            PACKAGE_REASON = CLIENT.get_last_download_failure_reason().strip().lower()
+            FAILURE_REASON = get_transfer_failure_reason(FILE_REASON, PACKAGE_REASON)
             return False, ATTEMPT, FAILURE_REASON
         except Exception as ERROR:
             if ATTEMPT >= TRANSFER_RETRY_ATTEMPTS:
@@ -849,6 +851,34 @@ def transfer_if_required(
             ATTEMPT += 1
 
     return False, ATTEMPT, "retry_exhausted"
+
+
+# ------------------------------------------------------------------------------
+# This function merges file and package fallback failure reasons into one
+# stable reason token for logging and diagnostics.
+#
+# 1. "FILE_REASON" is reason token from direct file download attempt.
+# 2. "PACKAGE_REASON" is reason token from package fallback attempt.
+#
+# Returns: Combined reason token.
+# ------------------------------------------------------------------------------
+def get_transfer_failure_reason(FILE_REASON: str, PACKAGE_REASON: str) -> str:
+    FILE_TOKEN = FILE_REASON or "download_failed"
+    PACKAGE_TOKEN = PACKAGE_REASON or "package_download_failed"
+
+    if PACKAGE_TOKEN in {"not_directory_node", "package_children_unavailable"}:
+        return FILE_TOKEN
+
+    if PACKAGE_TOKEN == FILE_TOKEN:
+        return FILE_TOKEN
+
+    if not FILE_REASON:
+        return PACKAGE_TOKEN
+
+    if not PACKAGE_REASON:
+        return FILE_TOKEN
+
+    return f"{FILE_TOKEN}; fallback={PACKAGE_TOKEN}"
 
 
 # ------------------------------------------------------------------------------
