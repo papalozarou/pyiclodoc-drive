@@ -22,6 +22,7 @@ from app.main import (
     handle_command,
     notify,
     parse_iso,
+    process_reauth_reminders,
     process_commands,
     run_backup,
     start_heartbeat_updater,
@@ -395,9 +396,17 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertTrue(any("Effective backup settings detail:" in LINE for LINE in DEBUG_LINES))
             self.assertTrue(any("Loaded manifest entries:" in LINE for LINE in DEBUG_LINES))
             self.assertTrue(any("Sync summary detail:" in LINE for LINE in DEBUG_LINES))
+            self.assertIn("*⬇️ PCD Drive - Backup started*", NOTIFY.call_args_list[0].args[1])
+            self.assertIn("Files downloading for Apple ID alice@example.com.", NOTIFY.call_args_list[0].args[1])
             self.assertIn("Scheduled every 60 minutes.", NOTIFY.call_args_list[0].args[1])
             self.assertNotIn("Mode:", NOTIFY.call_args_list[0].args[1])
             self.assertNotIn("Trigger:", NOTIFY.call_args_list[0].args[1])
+            self.assertIn("*📦 PCD Drive - Backup complete*", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Backup finished for Apple ID alice@example.com.", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Transferred: 2/3", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Skipped: 1", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Errors: 0", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Duration:", NOTIFY.call_args_list[1].args[1])
             self.assertIn("Average speed:", NOTIFY.call_args_list[1].args[1])
 
 # --------------------------------------------------------------------------
@@ -426,6 +435,58 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 
             self.assertEqual(NOTIFY.call_count, 2)
             self.assertNotIn("Average speed:", NOTIFY.call_args_list[1].args[1])
+
+# --------------------------------------------------------------------------
+# This test confirms two-day reauth reminder sends a required action prompt.
+# --------------------------------------------------------------------------
+    def test_process_reauth_reminders_sends_reauth_required_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            AUTH_STATE_PATH = Path(TMPDIR) / "pyiclodoc-drive-auth_state.json"
+            TELEGRAM = TelegramConfig("token", "12345")
+            AUTH_STATE = AuthState("2026-03-01T00:00:00+00:00", False, False, "alert5")
+
+            with patch("app.main.reauth_days_left", return_value=2):
+                with patch("app.main.notify") as NOTIFY:
+                    NEW_STATE = process_reauth_reminders(
+                        AUTH_STATE,
+                        AUTH_STATE_PATH,
+                        TELEGRAM,
+                        "alice",
+                        30,
+                    )
+
+            self.assertEqual(NEW_STATE.reminder_stage, "prompt2")
+            self.assertTrue(NEW_STATE.reauth_pending)
+            self.assertIn("Reauthentication required", NOTIFY.call_args[0][1])
+            self.assertIn("Reauthentication is due within two days.", NOTIFY.call_args[0][1])
+            self.assertIn("Send `alice auth 123456`", NOTIFY.call_args[0][1])
+            self.assertIn("Or `alice reauth 123456`", NOTIFY.call_args[0][1])
+
+# --------------------------------------------------------------------------
+# This test confirms five-day reminder sends a reauth reminder message.
+# --------------------------------------------------------------------------
+    def test_process_reauth_reminders_sends_five_day_reminder(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            AUTH_STATE_PATH = Path(TMPDIR) / "pyiclodoc-drive-auth_state.json"
+            TELEGRAM = TelegramConfig("token", "12345")
+            AUTH_STATE = AuthState("2026-03-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.reauth_days_left", return_value=5):
+                with patch("app.main.notify") as NOTIFY:
+                    NEW_STATE = process_reauth_reminders(
+                        AUTH_STATE,
+                        AUTH_STATE_PATH,
+                        TELEGRAM,
+                        "alice",
+                        30,
+                    )
+
+            self.assertEqual(NEW_STATE.reminder_stage, "alert5")
+            self.assertFalse(NEW_STATE.reauth_pending)
+            self.assertIn("Reauth reminder", NOTIFY.call_args[0][1])
+            self.assertIn("Reauthentication will be required within five days.", NOTIFY.call_args[0][1])
+            self.assertIn("Send `alice auth 123456`", NOTIFY.call_args[0][1])
+            self.assertIn("Or `alice reauth 123456`", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.
