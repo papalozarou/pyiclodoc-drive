@@ -44,8 +44,8 @@ docker compose up -d --build
 
 ```bash
 docker compose ps
-docker inspect --format='{{json .State.Health}}' icloud_alice
-docker inspect --format='{{json .State.Health}}' icloud_bob
+docker inspect --format='{{json .State.Health}}' icloud_drive_alice
+docker inspect --format='{{json .State.Health}}' icloud_drive_bob
 ```
 
 ## Testing
