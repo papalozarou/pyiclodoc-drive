@@ -254,6 +254,37 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(CLIENT.package_calls, 1)
 
 # --------------------------------------------------------------------------
+# This test confirms a stray local directory does not cause a normal remote
+# file to be treated as a package reconciliation success.
+# --------------------------------------------------------------------------
+    def test_transfer_if_required_rejects_local_directory_conflict_for_normal_file(self) -> None:
+        ENTRY = RemoteEntry(
+            path="docs/report.txt",
+            is_dir=False,
+            size=4,
+            modified="2026-03-07T12:00:00Z",
+        )
+        CLIENT = FakeClient([ENTRY], {"docs/report.txt": True})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            CONFLICT_DIR = ROOT_DIR / "docs" / "report.txt"
+            CONFLICT_DIR.mkdir(parents=True, exist_ok=True)
+
+            IS_SUCCESS, ATTEMPT, REASON = transfer_if_required(
+                CLIENT,
+                ROOT_DIR,
+                ENTRY,
+                True,
+            )
+
+        self.assertFalse(IS_SUCCESS)
+        self.assertEqual(ATTEMPT, 1)
+        self.assertEqual(REASON, "local_directory_conflict")
+        self.assertEqual(CLIENT.download_calls, 0)
+        self.assertEqual(CLIENT.package_calls, 0)
+
+# --------------------------------------------------------------------------
 # This test confirms known package paths use package-first handling and
 # emit explicit metadata-unavailable diagnostics when needed.
 # --------------------------------------------------------------------------

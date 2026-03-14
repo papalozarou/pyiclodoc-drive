@@ -1082,6 +1082,9 @@ def transfer_if_required(
     while ATTEMPT <= TRANSFER_RETRY_ATTEMPTS:
         try:
             if HAS_LOCAL_DIRECTORY:
+                if not IS_KNOWN_PACKAGE_PATH:
+                    return False, ATTEMPT, "local_directory_conflict"
+
                 IS_PACKAGE_SUCCESS = CLIENT.download_package_tree(ENTRY.path, LOCAL_PATH)
                 if IS_PACKAGE_SUCCESS:
                     return True, ATTEMPT, "package"
