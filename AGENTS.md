@@ -79,10 +79,25 @@ Examples:
 - MUST: Use paragraph spacing in comments, including blank comment lines between intro, argument lists, `N.B.`, and notes or reference sections
 - MUST: Keep source-code comment lines at or below 80 characters, including separator lines
 
+## Comment compliance
+- MUST: Treat source-comment compliance as a release-blocking requirement, not a polish pass
+- MUST: Before any commit, review every new or changed project file for comment or explanatory-text compliance against `AGENTS.md`
+- MUST: Apply the comment standard across languages and file types, not just Python source
+- MUST: Treat any file that defines behaviour, runtime wiring, scheduling, security, or operational flow as requiring explicit explanatory comments or prose
+- MUST: Do not mark a change block complete until module comments, class comments, function comments, Compose comments, shell comments, and configuration-file explanations are all present and structurally compliant where applicable
+- MUST: For new or heavily edited files, do the comment and explanation pass before final tests so any code or config reshaping needed for clarity happens before verification
+- MUST: If a file cannot be brought to the required comment standard within the current change block, stop and say so explicitly rather than deferring it silently
+- MUST: Treat Docker Compose files as source files for comment purposes
+- MUST: Treat example environment files as operational configuration that still requires grouped, explicit explanatory comments even where the source separator rule does not map literally
+- MUST: Prefer over-explaining non-obvious behaviour, constraints, and failure modes over leaving terse or implied comments
+- MUST: Never assume an existing comment density in a template file is sufficient for this project; re-evaluate it against local rules every time
+- MUST: Run an explicit comment-compliance pass before suggesting a commit
+- MUST: If the user has previously corrected comment quality in this repository, raise the bar on the next change rather than repeating the same minimum standard
+
 ## General coding rules
 - MUST: Prefer DRY standards
 - MUST NOT: Use nested for-loops or nested if-statements
-- MUST: Prefer separation of concerns when writing functions and scripts
+- MUST: Prefer separation of concerns across the codebase; do not mix entrypoint, orchestration, integration, and domain logic across the same files, modules, components, services, functions, or scripts when they can be separated cleanly
 - MUST: Follow recognised best-practice coding standards
 - MUST: Ensure logic is clear, robust, and easy to reason about
 - MUST: Prefer readability and maintainability over clever or overly complex implementations
