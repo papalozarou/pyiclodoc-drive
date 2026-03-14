@@ -13,11 +13,18 @@
 .gitignore
 .shellcheckrc
 *.md
-CLAUDE.md
+CODE_REVIEW.md
 README.md
 TODO.md
 scratchpad.sh
 test.sh
+
+# ------------------------------------------------------------------------------
+# AI related
+# ------------------------------------------------------------------------------
+.claude
+AGENTS.md
+CLAUDE.md
 
 # ------------------------------------------------------------------------------
 # Environment and secrets.
