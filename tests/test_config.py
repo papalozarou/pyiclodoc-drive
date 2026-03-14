@@ -8,7 +8,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from tests._stubs import install_dependency_stubs
+
+install_dependency_stubs()
+
 from app.config import load_config
+from app.main import validate_config
 
 
 # ------------------------------------------------------------------------------
@@ -117,7 +122,6 @@ class TestConfigLoad(unittest.TestCase):
                 "SYNC_TRAVERSAL_WORKERS": "zero",
                 "SYNC_DOWNLOAD_WORKERS": "many",
                 "SYNC_DOWNLOAD_CHUNK_MIB": "huge",
-                "REAUTH_INTERVAL_DAYS": "-1",
                 "SAFETY_NET_SAMPLE_SIZE": "10.5",
             }
             with patch.dict(os.environ, BASE_ENV | INVALIDS, clear=True):
@@ -129,6 +133,70 @@ class TestConfigLoad(unittest.TestCase):
         self.assertEqual(CONFIG.download_chunk_mib, 4)
         self.assertEqual(CONFIG.reauth_interval_days, 30)
         self.assertEqual(CONFIG.safety_net_sample_size, 200)
+        self.assertEqual(
+            CONFIG.config_parse_errors,
+            (
+                'SCHEDULE_INTERVAL_MINUTES must be an integer. Received "abc".',
+                'SYNC_TRAVERSAL_WORKERS must be an integer. Received "zero".',
+                'SYNC_DOWNLOAD_WORKERS must be "auto" or a positive integer. Received "many".',
+                'SYNC_DOWNLOAD_CHUNK_MIB must be an integer. Received "huge".',
+                'SAFETY_NET_SAMPLE_SIZE must be an integer. Received "10.5".',
+            ),
+        )
+
+# --------------------------------------------------------------------------
+# This test confirms signed integer env values are parsed before range checks.
+# --------------------------------------------------------------------------
+    def test_load_config_parses_signed_integer_values(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            BASE_ENV = build_base_env(TMPDIR)
+            with patch.dict(
+                os.environ,
+                BASE_ENV | {"REAUTH_INTERVAL_DAYS": "-1", "SYNC_DOWNLOAD_WORKERS": "-2"},
+                clear=True,
+            ):
+                CONFIG = load_config()
+
+        self.assertEqual(CONFIG.reauth_interval_days, -1)
+        self.assertEqual(CONFIG.sync_workers, 0)
+        self.assertEqual(
+            CONFIG.config_parse_errors,
+            ('SYNC_DOWNLOAD_WORKERS must be "auto" or a positive integer. Received "-2".',),
+        )
+
+# --------------------------------------------------------------------------
+# This test confirms invalid integer parse messages are surfaced by runtime
+# config validation.
+# --------------------------------------------------------------------------
+    def test_validate_config_includes_parse_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            BASE_ENV = build_base_env(TMPDIR)
+            with patch.dict(
+                os.environ,
+                BASE_ENV | {"SCHEDULE_INTERVAL_MINUTES": "abc"},
+                clear=True,
+            ):
+                CONFIG = load_config()
+
+        ERRORS = validate_config(CONFIG)
+        self.assertIn('SCHEDULE_INTERVAL_MINUTES must be an integer. Received "abc".', ERRORS)
+
+# --------------------------------------------------------------------------
+# This test confirms signed values are range-checked after successful parse.
+# --------------------------------------------------------------------------
+    def test_validate_config_rejects_out_of_range_signed_values(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            BASE_ENV = build_base_env(TMPDIR)
+            with patch.dict(
+                os.environ,
+                BASE_ENV | {"REAUTH_INTERVAL_DAYS": "-1", "SAFETY_NET_SAMPLE_SIZE": "0"},
+                clear=True,
+            ):
+                CONFIG = load_config()
+
+        ERRORS = validate_config(CONFIG)
+        self.assertIn("REAUTH_INTERVAL_DAYS must be an integer of at least 1.", ERRORS)
+        self.assertIn("SAFETY_NET_SAMPLE_SIZE must be an integer of at least 1.", ERRORS)
 
 # --------------------------------------------------------------------------
 # This test confirms sync worker auto mode parses to zero override.

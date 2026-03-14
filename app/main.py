@@ -57,7 +57,7 @@ HEARTBEAT_TOUCH_INTERVAL_SECONDS = 30
 # Returns: Validation error list; empty list means configuration is usable.
 # ------------------------------------------------------------------------------
 def validate_config(CONFIG: AppConfig) -> list[str]:
-    ERRORS: list[str] = []
+    ERRORS = list(CONFIG.config_parse_errors)
 
     if not CONFIG.icloud_email:
         ERRORS.append("ICLOUD_EMAIL is required.")
@@ -116,6 +116,12 @@ def validate_config(CONFIG: AppConfig) -> list[str]:
 
     if CONFIG.download_chunk_mib < 1 or CONFIG.download_chunk_mib > 16:
         ERRORS.append("SYNC_DOWNLOAD_CHUNK_MIB must be an integer between 1 and 16.")
+
+    if CONFIG.reauth_interval_days < 1:
+        ERRORS.append("REAUTH_INTERVAL_DAYS must be an integer of at least 1.")
+
+    if CONFIG.safety_net_sample_size < 1:
+        ERRORS.append("SAFETY_NET_SAMPLE_SIZE must be an integer of at least 1.")
 
     return ERRORS
 

@@ -3,9 +3,10 @@
 # worker.
 # ------------------------------------------------------------------------------
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
+from typing import Optional
 
 
 #
@@ -41,6 +42,7 @@ class AppConfig:
     session_dir: Path
     icloudpd_compat_dir: Path
     safety_net_sample_size: int
+    config_parse_errors: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ------------------------------------------------------------------------------
@@ -64,12 +66,51 @@ def env_value(NAME: str, DEFAULT: str = "") -> str:
 # The function returns the parsed integer or fallback default.
 # ------------------------------------------------------------------------------
 def env_int(NAME: str, DEFAULT: int) -> int:
+    VALUE, _ = parse_env_int(NAME, DEFAULT)
+    return VALUE
+
+
+# ------------------------------------------------------------------------------
+# This function parses an environment variable as an integer with error detail.
+#
+# 1. "NAME" is the environment key.
+# 2. "DEFAULT" is used when parsing fails.
+#
+# The function returns the parsed integer and an optional validation message.
+# ------------------------------------------------------------------------------
+def parse_env_int(NAME: str, DEFAULT: int) -> tuple[int, Optional[str]]:
     RAW_VALUE = env_value(NAME, str(DEFAULT))
 
-    if RAW_VALUE.isdigit():
-        return int(RAW_VALUE)
+    try:
+        return int(RAW_VALUE), None
+    except ValueError:
+        return DEFAULT, f'{NAME} must be an integer. Received "{RAW_VALUE}".'
 
-    return DEFAULT
+
+# ------------------------------------------------------------------------------
+# This function parses transfer worker count with "auto" fallback support.
+#
+# 1. "NAME" is the environment key.
+# 2. "DEFAULT" is used when the value is unset or invalid.
+#
+# The function returns 0 for "auto" mode, otherwise a positive integer and an
+# optional validation message.
+# ------------------------------------------------------------------------------
+def parse_env_workers(NAME: str, DEFAULT: int = 0) -> tuple[int, Optional[str]]:
+    RAW_VALUE = env_value(NAME, "auto")
+    NORMALISED = RAW_VALUE.lower()
+
+    if NORMALISED in {"", "auto"}:
+        return DEFAULT, None
+
+    VALUE, ERROR = parse_env_int(NAME, DEFAULT)
+    if ERROR is not None:
+        return DEFAULT, f'{NAME} must be "auto" or a positive integer. Received "{RAW_VALUE}".'
+
+    if VALUE > 0:
+        return VALUE, None
+
+    return DEFAULT, f'{NAME} must be "auto" or a positive integer. Received "{RAW_VALUE}".'
 
 
 # ------------------------------------------------------------------------------
@@ -81,17 +122,8 @@ def env_int(NAME: str, DEFAULT: int) -> int:
 # The function returns 0 for "auto" mode, otherwise a positive integer.
 # ------------------------------------------------------------------------------
 def env_workers(NAME: str, DEFAULT: int = 0) -> int:
-    RAW_VALUE = env_value(NAME, "auto").lower()
-
-    if RAW_VALUE in {"", "auto"}:
-        return DEFAULT
-
-    if RAW_VALUE.isdigit():
-        VALUE = int(RAW_VALUE)
-        if VALUE > 0:
-            return VALUE
-
-    return DEFAULT
+    VALUE, _ = parse_env_workers(NAME, DEFAULT)
+    return VALUE
 
 
 # ------------------------------------------------------------------------------
@@ -140,6 +172,40 @@ def load_config() -> AppConfig:
     COOKIE_DIR = ensure_dir(Path(env_value("COOKIE_DIR", "/config/cookies")))
     SESSION_DIR = ensure_dir(Path(env_value("SESSION_DIR", "/config/session")))
     COMPAT_DIR = ensure_dir(Path(env_value("ICLOUDPD_COMPAT_DIR", "/config/icloudpd")))
+    CONFIG_PARSE_ERRORS: list[str] = []
+
+    SCHEDULE_INTERVAL_MINUTES, SCHEDULE_INTERVAL_ERROR = parse_env_int(
+        "SCHEDULE_INTERVAL_MINUTES",
+        1440,
+    )
+    TRAVERSAL_WORKERS, TRAVERSAL_WORKERS_ERROR = parse_env_int(
+        "SYNC_TRAVERSAL_WORKERS",
+        1,
+    )
+    SYNC_WORKERS, SYNC_WORKERS_ERROR = parse_env_workers("SYNC_DOWNLOAD_WORKERS", 0)
+    DOWNLOAD_CHUNK_MIB, DOWNLOAD_CHUNK_ERROR = parse_env_int(
+        "SYNC_DOWNLOAD_CHUNK_MIB",
+        4,
+    )
+    REAUTH_INTERVAL_DAYS, REAUTH_INTERVAL_ERROR = parse_env_int(
+        "REAUTH_INTERVAL_DAYS",
+        30,
+    )
+    SAFETY_NET_SAMPLE_SIZE, SAFETY_NET_SAMPLE_ERROR = parse_env_int(
+        "SAFETY_NET_SAMPLE_SIZE",
+        200,
+    )
+
+    for ERROR in (
+        SCHEDULE_INTERVAL_ERROR,
+        TRAVERSAL_WORKERS_ERROR,
+        SYNC_WORKERS_ERROR,
+        DOWNLOAD_CHUNK_ERROR,
+        REAUTH_INTERVAL_ERROR,
+        SAFETY_NET_SAMPLE_ERROR,
+    ):
+        if ERROR is not None:
+            CONFIG_PARSE_ERRORS.append(ERROR)
 
     return AppConfig(
         container_username=env_value("CONTAINER_USERNAME", "icloudbot"),
@@ -153,12 +219,12 @@ def load_config() -> AppConfig:
         schedule_backup_time=env_value("SCHEDULE_BACKUP_TIME", "02:00"),
         schedule_weekdays=env_value("SCHEDULE_WEEKDAYS", "monday").lower(),
         schedule_monthly_week=env_value("SCHEDULE_MONTHLY_WEEK", "first").lower(),
-        schedule_interval_minutes=env_int("SCHEDULE_INTERVAL_MINUTES", 1440),
+        schedule_interval_minutes=SCHEDULE_INTERVAL_MINUTES,
         backup_delete_removed=env_bool("BACKUP_DELETE_REMOVED", False),
-        traversal_workers=env_int("SYNC_TRAVERSAL_WORKERS", 1),
-        sync_workers=env_workers("SYNC_DOWNLOAD_WORKERS", 0),
-        download_chunk_mib=env_int("SYNC_DOWNLOAD_CHUNK_MIB", 4),
-        reauth_interval_days=env_int("REAUTH_INTERVAL_DAYS", 30),
+        traversal_workers=TRAVERSAL_WORKERS,
+        sync_workers=SYNC_WORKERS,
+        download_chunk_mib=DOWNLOAD_CHUNK_MIB,
+        reauth_interval_days=REAUTH_INTERVAL_DAYS,
         output_dir=OUTPUT_DIR,
         config_dir=CONFIG_DIR,
         logs_dir=LOGS_DIR,
@@ -168,5 +234,6 @@ def load_config() -> AppConfig:
         cookie_dir=COOKIE_DIR,
         session_dir=SESSION_DIR,
         icloudpd_compat_dir=COMPAT_DIR,
-        safety_net_sample_size=env_int("SAFETY_NET_SAMPLE_SIZE", 200),
+        safety_net_sample_size=SAFETY_NET_SAMPLE_SIZE,
+        config_parse_errors=tuple(CONFIG_PARSE_ERRORS),
     )
