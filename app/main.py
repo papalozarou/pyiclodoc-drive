@@ -31,6 +31,7 @@ from app.scheduler import (
     parse_weekday,
     parse_weekday_list,
 )
+from app.runtime_context import WorkerRuntimeContext
 from app.state import AuthState, load_auth_state, load_manifest, now_iso, save_auth_state, save_manifest
 from app.syncer import perform_incremental_sync, run_first_time_safety_net
 from app.telegram_bot import TelegramConfig, fetch_updates, parse_command, send_message
@@ -527,6 +528,7 @@ def main() -> int:
     CONFIG = load_config()
     LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
     TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
+    RUNTIME_CONTEXT: WorkerRuntimeContext | None = None
     HEARTBEAT_STOP_EVENT: threading.Event | None = None
     STOP_STATUS = "Worker process exited."
 
@@ -540,6 +542,12 @@ def main() -> int:
             CONFIG,
             icloud_email=CONFIG.icloud_email or STORED_EMAIL,
             icloud_password=CONFIG.icloud_password or STORED_PASSWORD,
+        )
+        RUNTIME_CONTEXT = WorkerRuntimeContext(
+            CONFIG=CONFIG,
+            TELEGRAM=TELEGRAM,
+            LOG_FILE=LOG_FILE,
+            APPLE_ID_LABEL=format_apple_id_label(CONFIG.icloud_email),
         )
 
         ERRORS = validate_config(CONFIG)
@@ -558,26 +566,25 @@ def main() -> int:
             CONFIG.icloud_email,
             CONFIG.icloud_password,
         )
-        APPLE_ID_LABEL = format_apple_id_label(CONFIG.icloud_email)
         notify(
-            TELEGRAM,
-            build_container_started_message(APPLE_ID_LABEL),
+            RUNTIME_CONTEXT.TELEGRAM,
+            build_container_started_message(RUNTIME_CONTEXT.APPLE_ID_LABEL),
         )
 
-        CLIENT = ICloudDriveClient(CONFIG)
-        AUTH_STATE = load_auth_state(CONFIG.auth_state_path)
+        CLIENT = ICloudDriveClient(RUNTIME_CONTEXT.CONFIG)
+        AUTH_STATE = load_auth_state(RUNTIME_CONTEXT.CONFIG.auth_state_path)
         AUTH_STATE, IS_AUTHENTICATED, DETAILS = attempt_auth(
             CLIENT,
             AUTH_STATE,
-            CONFIG.auth_state_path,
-            TELEGRAM,
-            CONFIG.container_username,
-            CONFIG.icloud_email,
+            RUNTIME_CONTEXT.CONFIG.auth_state_path,
+            RUNTIME_CONTEXT.TELEGRAM,
+            RUNTIME_CONTEXT.CONFIG.container_username,
+            RUNTIME_CONTEXT.CONFIG.icloud_email,
             "",
         )
-        log_line(LOG_FILE, "info", DETAILS)
+        log_line(RUNTIME_CONTEXT.LOG_FILE, "info", DETAILS)
         log_line(
-            LOG_FILE,
+            RUNTIME_CONTEXT.LOG_FILE,
             "debug",
             "Auth state after startup attempt: "
             f"is_authenticated={IS_AUTHENTICATED}, "
@@ -585,44 +592,58 @@ def main() -> int:
             f"reauth_pending={AUTH_STATE.reauth_pending}",
         )
 
-        if CONFIG.run_once:
+        if RUNTIME_CONTEXT.CONFIG.run_once:
             if not IS_AUTHENTICATED or AUTH_STATE.reauth_pending:
                 notify(
-                    TELEGRAM,
+                    RUNTIME_CONTEXT.TELEGRAM,
                     build_one_shot_waiting_for_auth_message(
-                        APPLE_ID_LABEL,
+                        RUNTIME_CONTEXT.APPLE_ID_LABEL,
                         max(1, RUN_ONCE_AUTH_WAIT_SECONDS // 60),
                     ),
                 )
                 AUTH_STATE, IS_AUTHENTICATED = wait_for_one_shot_auth(
-                    CONFIG,
+                    RUNTIME_CONTEXT.CONFIG,
                     CLIENT,
                     AUTH_STATE,
                     IS_AUTHENTICATED,
-                    TELEGRAM,
+                    RUNTIME_CONTEXT.TELEGRAM,
                 )
 
             if not IS_AUTHENTICATED:
                 notify(
-                    TELEGRAM,
-                    build_backup_skipped_auth_incomplete_message(APPLE_ID_LABEL),
+                    RUNTIME_CONTEXT.TELEGRAM,
+                    build_backup_skipped_auth_incomplete_message(
+                        RUNTIME_CONTEXT.APPLE_ID_LABEL
+                    ),
                 )
                 STOP_STATUS = "One-shot backup skipped due to incomplete authentication."
                 return 2
 
             if AUTH_STATE.reauth_pending:
                 notify(
-                    TELEGRAM,
-                    build_backup_skipped_reauth_pending_message(APPLE_ID_LABEL),
+                    RUNTIME_CONTEXT.TELEGRAM,
+                    build_backup_skipped_reauth_pending_message(
+                        RUNTIME_CONTEXT.APPLE_ID_LABEL
+                    ),
                 )
                 STOP_STATUS = "One-shot backup skipped due to pending reauthentication."
                 return 3
 
-            if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
+            if not enforce_safety_net(
+                RUNTIME_CONTEXT.CONFIG,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.LOG_FILE,
+            ):
                 STOP_STATUS = "One-shot backup blocked by safety net."
                 return 4
 
-            run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, "one-shot")
+            run_backup(
+                CLIENT,
+                RUNTIME_CONTEXT.CONFIG,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.LOG_FILE,
+                "one-shot",
+            )
             STOP_STATUS = "Run completed and container exited."
             return 0
 
@@ -630,22 +651,22 @@ def main() -> int:
         NEXT_UPDATE_OFFSET: int | None = None
         INITIAL_EPOCH = int(time.time())
 
-        if CONFIG.schedule_mode == "interval":
+        if RUNTIME_CONTEXT.CONFIG.schedule_mode == "interval":
             NEXT_RUN_EPOCH = INITIAL_EPOCH
         else:
-            NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, INITIAL_EPOCH)
+            NEXT_RUN_EPOCH = get_next_run_epoch(RUNTIME_CONTEXT.CONFIG, INITIAL_EPOCH)
 
         while True:
             AUTH_STATE = process_reauth_reminders(
                 AUTH_STATE,
-                CONFIG.auth_state_path,
-                TELEGRAM,
-                CONFIG.container_username,
-                CONFIG.reauth_interval_days,
+                RUNTIME_CONTEXT.CONFIG.auth_state_path,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.CONFIG.container_username,
+                RUNTIME_CONTEXT.CONFIG.reauth_interval_days,
             )
             COMMANDS, NEXT_UPDATE_OFFSET = process_commands(
-                TELEGRAM,
-                CONFIG.container_username,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.CONFIG.container_username,
                 NEXT_UPDATE_OFFSET,
             )
 
@@ -653,11 +674,11 @@ def main() -> int:
                 AUTH_STATE, IS_AUTHENTICATED, REQUESTED = handle_command(
                     COMMAND,
                     ARGS,
-                    CONFIG,
+                    RUNTIME_CONTEXT.CONFIG,
                     CLIENT,
                     AUTH_STATE,
                     IS_AUTHENTICATED,
-                    TELEGRAM,
+                    RUNTIME_CONTEXT.TELEGRAM,
                 )
                 BACKUP_REQUESTED = BACKUP_REQUESTED or REQUESTED
 
@@ -668,39 +689,57 @@ def main() -> int:
                 time.sleep(5)
                 continue
 
-            NEXT_RUN_EPOCH = get_next_run_epoch(CONFIG, NOW_EPOCH)
+            NEXT_RUN_EPOCH = get_next_run_epoch(RUNTIME_CONTEXT.CONFIG, NOW_EPOCH)
 
             if not IS_AUTHENTICATED:
                 notify(
-                    TELEGRAM,
-                    build_backup_skipped_auth_incomplete_message(APPLE_ID_LABEL),
+                    RUNTIME_CONTEXT.TELEGRAM,
+                    build_backup_skipped_auth_incomplete_message(
+                        RUNTIME_CONTEXT.APPLE_ID_LABEL
+                    ),
                 )
                 time.sleep(5)
                 continue
 
             if AUTH_STATE.reauth_pending:
                 notify(
-                    TELEGRAM,
-                    build_backup_skipped_reauth_pending_message(APPLE_ID_LABEL),
+                    RUNTIME_CONTEXT.TELEGRAM,
+                    build_backup_skipped_reauth_pending_message(
+                        RUNTIME_CONTEXT.APPLE_ID_LABEL
+                    ),
                 )
                 time.sleep(5)
                 continue
 
-            if not enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE):
+            if not enforce_safety_net(
+                RUNTIME_CONTEXT.CONFIG,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.LOG_FILE,
+            ):
                 time.sleep(30)
                 continue
 
             BACKUP_TRIGGER = "manual" if BACKUP_REQUESTED else "scheduled"
-            run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, BACKUP_TRIGGER)
+            run_backup(
+                CLIENT,
+                RUNTIME_CONTEXT.CONFIG,
+                RUNTIME_CONTEXT.TELEGRAM,
+                RUNTIME_CONTEXT.LOG_FILE,
+                BACKUP_TRIGGER,
+            )
             BACKUP_REQUESTED = False
             time.sleep(5)
     finally:
-        notify(
-            TELEGRAM,
-            build_container_stopped_message(
-                format_apple_id_label(CONFIG.icloud_email), STOP_STATUS
-            ),
-        )
+        if RUNTIME_CONTEXT is None:
+            APPLE_ID_LABEL = format_apple_id_label(CONFIG.icloud_email)
+            notify(TELEGRAM, build_container_stopped_message(APPLE_ID_LABEL, STOP_STATUS))
+        else:
+            notify(
+                RUNTIME_CONTEXT.TELEGRAM,
+                build_container_stopped_message(
+                    RUNTIME_CONTEXT.APPLE_ID_LABEL, STOP_STATUS
+                ),
+            )
         if HEARTBEAT_STOP_EVENT is not None:
             HEARTBEAT_STOP_EVENT.set()
 
