@@ -7,8 +7,10 @@
 name: pyiclodoc-drive
 
 # ------------------------------------------------------------------------------
-# Docker extension fields for environment variables. This is used by all
-# containers to ensure that the timezone, UID, GID and log settings are the same.
+# Define shared environment values used by all worker services.
+#
+# 1. Timezone, UID, and GID keep scheduling and file ownership consistent.
+# 2. Log settings are shared so both services rotate logs the same way.
 # ------------------------------------------------------------------------------
 x-env:
   &default-env
@@ -21,8 +23,11 @@ x-env:
   LOG_ROTATE_KEEP_DAYS: ${C_LOG_ROTATE_KEEP_DAYS}
 
 # ------------------------------------------------------------------------------
-# Docker extension fields for default security options that disallow privilege
-# escalation inside a container.
+# Define shared security settings used by all worker services.
+#
+# 1. All Linux capabilities are dropped by default.
+# 2. Only "SETUID" and "SETGID" are re-added so the entrypoint can drop from
+#    root to the configured runtime UID and GID after reading secrets.
 # ------------------------------------------------------------------------------
 x-security:
   &default-security
@@ -35,10 +40,10 @@ x-security:
     - no-new-privileges:true
 
 # ------------------------------------------------------------------------------
-# Define secret-file mappings consumed by worker services.
+# Define Docker secret mappings consumed by the example services.
 #
-# Each secret maps to a local file path under "H_DKR_SECRETS". Services 
-# reference these by secret name under their "secrets" key.
+# 1. The Telegram bot token is shared between both worker services.
+# 2. Each worker keeps its own iCloud email and password secrets.
 # ------------------------------------------------------------------------------
 secrets:
   telegram_bot_token:
@@ -61,10 +66,13 @@ secrets:
 # ------------------------------------------------------------------------------
 services:
 # ------------------------------------------------------------------------------
-# Service "icloud_alice" runs the worker with isolated Alice state paths.
-# This service reads configuration from "ALICE_*" and shared host values.
+# Service "icloud_drive_alice" runs the worker with isolated Alice state
+# paths.
+# 
+# This service reads Alice-specific env values from ".env.example" and stores
+# runtime state under "${ALICE_*}" host paths.
 # ------------------------------------------------------------------------------
-  icloud_alice:
+  icloud_drive_alice:
     image: "${IMG_NAME}:alpine-${ALP_VER}"
     container_name: icloud_alice
     build:
@@ -103,10 +111,12 @@ services:
     restart: "${ALICE_RESTART_POLICY}"
 
 # ------------------------------------------------------------------------------
-# Service "icloud_bob" runs the worker with isolated Bob state paths.
-# This service reads configuration from "BOB_*" and shared host values.
+# Service "icloud_drive_bob" runs the worker with isolated Bob state paths.
+# 
+# This service mirrors the Alice example so the project can run more than one
+# isolated worker in the same Compose project.
 # ------------------------------------------------------------------------------
-  icloud_bob:
+  icloud_drive_bob:
     image: "${IMG_NAME}:alpine-${ALP_VER}"
     container_name: icloud_bob
     build:
