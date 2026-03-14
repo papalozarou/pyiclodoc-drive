@@ -75,6 +75,9 @@ class SyncResult:
     transferred_bytes: int
     skipped_files: int
     error_files: int
+    traversal_complete: bool = True
+    traversal_hard_failures: int = 0
+    delete_phase_skipped: bool = False
 
 
 # ------------------------------------------------------------------------------
@@ -292,6 +295,8 @@ def perform_incremental_sync(
         LOG_FILE,
         TRAVERSAL_STARTED_EPOCH,
     )
+    TRAVERSAL_HARD_FAILURES = get_traversal_hard_failure_count(CLIENT)
+    TRAVERSAL_COMPLETE = TRAVERSAL_HARD_FAILURES == 0
     TRAVERSAL_DURATION_SECONDS = time.monotonic() - TRAVERSAL_STARTED_EPOCH
     FILES = [ENTRY for ENTRY in ENTRIES if not ENTRY.is_dir]
     DIRECTORIES = [ENTRY for ENTRY in ENTRIES if ENTRY.is_dir]
@@ -302,7 +307,9 @@ def perform_incremental_sync(
             "Traversal finished. "
             f"entries={len(ENTRIES)}, files={len(FILES)}, "
             f"directories={len(DIRECTORIES)}, "
-            f"duration_seconds={TRAVERSAL_DURATION_SECONDS:.3f}.",
+            f"duration_seconds={TRAVERSAL_DURATION_SECONDS:.3f}, "
+            f"complete={TRAVERSAL_COMPLETE}, "
+            f"hard_failures={TRAVERSAL_HARD_FAILURES}.",
         )
 
     if LOG_FILE is not None:
@@ -318,6 +325,13 @@ def perform_incremental_sync(
             "Remote listing detail: "
             f"entries={len(ENTRIES)}, files={len(FILES)}, directories={len(DIRECTORIES)}",
         )
+        if not TRAVERSAL_COMPLETE:
+            log_line(
+                LOG_FILE,
+                "error",
+                "Traversal incomplete. Delete phase and manifest save will be skipped "
+                "for this run.",
+            )
 
     ensure_directories(OUTPUT_DIR, DIRECTORIES, LOG_FILE)
     NEW_MANIFEST: dict[str, dict[str, Any]] = {}
@@ -572,7 +586,16 @@ def perform_incremental_sync(
     for ENTRY in DIRECTORIES:
         NEW_MANIFEST[ENTRY.path] = entry_metadata(ENTRY)
 
-    if BACKUP_DELETE_REMOVED:
+    DELETE_PHASE_SKIPPED = BACKUP_DELETE_REMOVED and not TRAVERSAL_COMPLETE
+
+    if DELETE_PHASE_SKIPPED and LOG_FILE is not None:
+        log_line(
+            LOG_FILE,
+            "info",
+            "Delete phase skipped because traversal was incomplete.",
+        )
+
+    if BACKUP_DELETE_REMOVED and TRAVERSAL_COMPLETE:
         if LOG_FILE is not None:
             log_line(LOG_FILE, "info", "Delete phase started.")
 
@@ -599,7 +622,28 @@ def perform_incremental_sync(
         TRANSFERRED_BYTES,
         SKIPPED,
         ERRORS,
+        traversal_complete=TRAVERSAL_COMPLETE,
+        traversal_hard_failures=TRAVERSAL_HARD_FAILURES,
+        delete_phase_skipped=DELETE_PHASE_SKIPPED,
     ), NEW_MANIFEST
+
+
+# ------------------------------------------------------------------------------
+# This function returns traversal hard-failure count from client telemetry.
+#
+# 1. "CLIENT" is the active iCloud API wrapper.
+#
+# Returns: Count of hard traversal failures recorded by the client.
+# ------------------------------------------------------------------------------
+def get_traversal_hard_failure_count(CLIENT: ICloudDriveClient) -> int:
+    if not hasattr(CLIENT, "get_traversal_stats_snapshot"):
+        return 0
+
+    STATS = CLIENT.get_traversal_stats_snapshot()
+    if not isinstance(STATS, dict):
+        return 0
+
+    return max(int(STATS.get("dir_hard_failures", 0)), 0)
 
 
 # ------------------------------------------------------------------------------

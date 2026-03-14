@@ -58,6 +58,7 @@ class FakeClient:
         self.download_calls = 0
         self.package_calls = 0
         self.last_reason = ""
+        self.traversal_stats = {"dir_hard_failures": 0}
 
     def list_entries(self) -> list[RemoteEntry]:
         return self.entries
@@ -92,6 +93,9 @@ class FakeClient:
 
     def get_last_download_failure_reason(self) -> str:
         return self.last_reason
+
+    def get_traversal_stats_snapshot(self) -> dict[str, int]:
+        return dict(self.traversal_stats)
 
 
 # ------------------------------------------------------------------------------
@@ -767,6 +771,36 @@ class TestSyncerHelpers(unittest.TestCase):
             NEW_MANIFEST["docs/archive.bundle"]["package_state"],
             "package_reconciled",
         )
+
+# --------------------------------------------------------------------------
+# This test confirms incomplete traversal blocks delete-removed behaviour
+# and surfaces the partial-run state in the sync summary.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_skips_delete_when_traversal_incomplete(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/keep.txt", False, 4, "2026-03-07T12:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/keep.txt": True})
+        CLIENT.traversal_stats["dir_hard_failures"] = 1
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            STALE_PATH = ROOT_DIR / "docs" / "stale.txt"
+            STALE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            STALE_PATH.write_text("stale", encoding="utf-8")
+
+            SUMMARY, _ = perform_incremental_sync(
+                CLIENT,
+                ROOT_DIR,
+                {},
+                BACKUP_DELETE_REMOVED=True,
+            )
+
+            self.assertTrue(STALE_PATH.exists())
+
+        self.assertFalse(SUMMARY.traversal_complete)
+        self.assertEqual(SUMMARY.traversal_hard_failures, 1)
+        self.assertTrue(SUMMARY.delete_phase_skipped)
 
 # --------------------------------------------------------------------------
 # This test confirms transient exceptions are retried before succeeding.

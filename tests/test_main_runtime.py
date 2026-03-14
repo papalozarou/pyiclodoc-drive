@@ -437,6 +437,51 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertNotIn("Average speed:", NOTIFY.call_args_list[1].args[1])
 
 # --------------------------------------------------------------------------
+# This test confirms incomplete traversal suppresses manifest persistence and
+# surfaces the partial-run outcome in logs and Telegram output.
+# --------------------------------------------------------------------------
+    def test_run_backup_skips_manifest_save_when_traversal_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            TELEGRAM = TelegramConfig("token", "12345")
+            LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
+            CLIENT = Mock()
+            SUMMARY = SimpleNamespace(
+                transferred_files=1,
+                transferred_bytes=1024,
+                total_files=3,
+                skipped_files=1,
+                error_files=1,
+                traversal_complete=False,
+                traversal_hard_failures=2,
+                delete_phase_skipped=True,
+            )
+
+            with patch("app.main.load_manifest", return_value={"/a": {"etag": "1"}}):
+                with patch("app.main.perform_incremental_sync", return_value=(SUMMARY, {"/b": {"etag": "2"}})):
+                    with patch("app.main.save_manifest") as SAVE_MANIFEST:
+                        with patch("app.main.notify") as NOTIFY:
+                            with patch("app.main.log_line") as LOG_LINE:
+                                run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, "scheduled")
+
+            SAVE_MANIFEST.assert_not_called()
+            self.assertEqual(NOTIFY.call_count, 2)
+            self.assertIn("Status: Partial run due to incomplete traversal", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Traversal hard failures: 2", NOTIFY.call_args_list[1].args[1])
+            self.assertIn("Manifest: Not updated", NOTIFY.call_args_list[1].args[1])
+            self.assertIn(
+                "Delete removed: Skipped because traversal was incomplete",
+                NOTIFY.call_args_list[1].args[1],
+            )
+            self.assertTrue(
+                any(
+                    CALL.args[1] == "error"
+                    and "Manifest save skipped because traversal was incomplete." in CALL.args[2]
+                    for CALL in LOG_LINE.call_args_list
+                )
+            )
+
+# --------------------------------------------------------------------------
 # This test confirms two-day reauth reminder sends a required action prompt.
 # --------------------------------------------------------------------------
     def test_process_reauth_reminders_sends_reauth_required_prompt(self) -> None:

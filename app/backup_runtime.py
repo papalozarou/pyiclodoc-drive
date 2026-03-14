@@ -170,16 +170,43 @@ def run_backup(
         f"errors={SUMMARY.error_files}, "
         f"manifest_entries={len(NEW_MANIFEST)}",
     )
-    SAVE_MANIFEST_FN(CONFIG.manifest_path, NEW_MANIFEST)
+    TRAVERSAL_COMPLETE = bool(getattr(SUMMARY, "traversal_complete", True))
+    TRAVERSAL_HARD_FAILURES = max(int(getattr(SUMMARY, "traversal_hard_failures", 0)), 0)
+    DELETE_PHASE_SKIPPED = bool(getattr(SUMMARY, "delete_phase_skipped", False))
+
+    if TRAVERSAL_COMPLETE:
+        SAVE_MANIFEST_FN(CONFIG.manifest_path, NEW_MANIFEST)
+    else:
+        LOG_LINE_FN(
+            LOG_FILE,
+            "error",
+            "Manifest save skipped because traversal was incomplete.",
+        )
 
     DURATION_SECONDS = int(time.time()) - RUN_START_EPOCH
     AVERAGE_SPEED = FORMAT_SPEED_FN(SUMMARY.transferred_bytes, DURATION_SECONDS)
-    STATUS_LINES = [
-        f"Transferred: {SUMMARY.transferred_files}/{SUMMARY.total_files}",
-        f"Skipped: {SUMMARY.skipped_files}",
-        f"Errors: {SUMMARY.error_files}",
-        f"Duration: {FORMAT_DURATION_FN(DURATION_SECONDS)}",
-    ]
+    STATUS_LINES: list[str] = []
+
+    if not TRAVERSAL_COMPLETE:
+        STATUS_LINES.extend(
+            [
+                "Status: Partial run due to incomplete traversal",
+                f"Traversal hard failures: {TRAVERSAL_HARD_FAILURES}",
+                "Manifest: Not updated",
+            ]
+        )
+
+        if DELETE_PHASE_SKIPPED:
+            STATUS_LINES.append("Delete removed: Skipped because traversal was incomplete")
+
+    STATUS_LINES.extend(
+        [
+            f"Transferred: {SUMMARY.transferred_files}/{SUMMARY.total_files}",
+            f"Skipped: {SUMMARY.skipped_files}",
+            f"Errors: {SUMMARY.error_files}",
+            f"Duration: {FORMAT_DURATION_FN(DURATION_SECONDS)}",
+        ]
+    )
 
     if SUMMARY.transferred_files > 0:
         STATUS_LINES.append(f"Average speed: {AVERAGE_SPEED}")
@@ -188,8 +215,8 @@ def run_backup(
     NOTIFY_FN(TELEGRAM, COMPLETION_MESSAGE)
     LOG_LINE_FN(
         LOG_FILE,
-        "info",
-        "Backup complete. "
+        "info" if TRAVERSAL_COMPLETE else "error",
+        "Backup complete. " if TRAVERSAL_COMPLETE else "Backup completed with incomplete traversal. "
         f"Transferred {SUMMARY.transferred_files}/{SUMMARY.total_files}, "
         f"skipped {SUMMARY.skipped_files}, errors {SUMMARY.error_files}.",
     )
