@@ -140,6 +140,29 @@ class TestMainReminderLogic(unittest.TestCase):
             self.assertIn("Send `alice auth 123456`", NOTIFY.call_args[0][1])
             self.assertIn("Or `alice reauth 123456`", NOTIFY.call_args[0][1])
 
+# --------------------------------------------------------------------------
+# This test confirms steady-state reminder processing returns unchanged
+# state without rewriting persistence.
+# --------------------------------------------------------------------------
+    def test_process_reauth_reminders_does_not_save_unchanged_state(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            STATE_PATH = Path(TMPDIR) / "pyiclodoc-drive-auth_state.json"
+            TELEGRAM = TelegramConfig(bot_token="", chat_id="")
+            STATE = AuthState(
+                last_auth_utc=iso_days_ago(1),
+                auth_pending=False,
+                reauth_pending=False,
+                reminder_stage="none",
+            )
+
+            with patch("app.main.save_auth_state") as SAVE:
+                with patch("app.main.notify") as NOTIFY:
+                    UPDATED = process_reauth_reminders(STATE, STATE_PATH, TELEGRAM, "alice", 30)
+
+            self.assertEqual(UPDATED, STATE)
+            SAVE.assert_not_called()
+            NOTIFY.assert_not_called()
+
 
 # ------------------------------------------------------------------------------
 # These tests verify configuration validation for one-shot and interval modes.

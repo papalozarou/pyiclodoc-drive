@@ -171,7 +171,8 @@ def process_reauth_reminders(
 
     if DAYS_LEFT > 5:
         NEW_STATE = replace(AUTH_STATE, reminder_stage="none", reauth_pending=False)
-        SAVE_AUTH_STATE_FN(AUTH_STATE_PATH, NEW_STATE)
+        if NEW_STATE != AUTH_STATE:
+            SAVE_AUTH_STATE_FN(AUTH_STATE_PATH, NEW_STATE)
         return NEW_STATE
 
     if DAYS_LEFT <= 2 and AUTH_STATE.reminder_stage != "prompt2":

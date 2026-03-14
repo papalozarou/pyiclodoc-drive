@@ -534,6 +534,31 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertIn("Or `alice reauth 123456`", NOTIFY.call_args[0][1])
 
 # --------------------------------------------------------------------------
+# This test confirms steady-state reminder processing does not rewrite auth
+# state when no transition is required.
+# --------------------------------------------------------------------------
+    def test_process_reauth_reminders_does_not_save_when_state_is_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            AUTH_STATE_PATH = Path(TMPDIR) / "pyiclodoc-drive-auth_state.json"
+            TELEGRAM = TelegramConfig("token", "12345")
+            AUTH_STATE = AuthState("2026-03-01T00:00:00+00:00", False, False, "none")
+
+            with patch("app.main.reauth_days_left", return_value=8):
+                with patch("app.main.save_auth_state") as SAVE:
+                    with patch("app.main.notify") as NOTIFY:
+                        NEW_STATE = process_reauth_reminders(
+                            AUTH_STATE,
+                            AUTH_STATE_PATH,
+                            TELEGRAM,
+                            "alice",
+                            30,
+                        )
+
+            self.assertEqual(NEW_STATE, AUTH_STATE)
+            SAVE.assert_not_called()
+            NOTIFY.assert_not_called()
+
+# --------------------------------------------------------------------------
 # This test confirms handle_command backup path requests a backup.
 # --------------------------------------------------------------------------
     def test_handle_command_backup_path(self) -> None:
