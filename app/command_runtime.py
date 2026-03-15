@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 from app.state import AuthState, save_auth_state
 from app.telegram_bot import TelegramConfig, fetch_updates, parse_command
@@ -15,6 +15,22 @@ from app.telegram_messages import (
     build_backup_requested_message,
     build_reauthentication_required_for_apple_id_message,
 )
+
+
+# ------------------------------------------------------------------------------
+# This protocol describes the config values required for command handling.
+# ------------------------------------------------------------------------------
+class CommandConfig(Protocol):
+    auth_state_path: Path
+    container_username: str
+    icloud_email: str
+
+
+# ------------------------------------------------------------------------------
+# This protocol is a marker for the command handler's iCloud client argument.
+# ------------------------------------------------------------------------------
+class CommandClient(Protocol):
+    ...
 
 
 # ------------------------------------------------------------------------------
@@ -93,8 +109,8 @@ def process_commands(
 def handle_command(
     COMMAND: str,
     ARGS: str,
-    CONFIG: object,
-    CLIENT: object,
+    CONFIG: CommandConfig,
+    CLIENT: CommandClient,
     AUTH_STATE: AuthState,
     IS_AUTHENTICATED: bool,
     TELEGRAM: TelegramConfig,

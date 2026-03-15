@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 from dateutil import parser as date_parser
 
@@ -21,6 +21,17 @@ from app.telegram_messages import (
     build_reauthentication_required_message,
 )
 from app.time_utils import now_local
+
+
+# ------------------------------------------------------------------------------
+# This protocol describes the auth methods required from the iCloud client.
+# ------------------------------------------------------------------------------
+class AuthClient(Protocol):
+    def complete_authentication(self, CODE: str) -> tuple[bool, str]:
+        ...
+
+    def start_authentication(self) -> tuple[bool, str]:
+        ...
 
 
 # ------------------------------------------------------------------------------
@@ -106,7 +117,7 @@ class AuthRuntimeDeps:
 # Returns: Tuple "(new_state, is_authenticated, details_message)".
 # ------------------------------------------------------------------------------
 def attempt_auth(
-    CLIENT: object,
+    CLIENT: AuthClient,
     AUTH_STATE: AuthState,
     AUTH_STATE_PATH: Path,
     TELEGRAM: TelegramConfig,
