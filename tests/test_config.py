@@ -13,7 +13,7 @@ from tests._stubs import install_dependency_stubs
 install_dependency_stubs()
 
 from app.config import load_config
-from app.main import validate_config
+from app.config_validation import validate_config
 
 
 # ------------------------------------------------------------------------------
