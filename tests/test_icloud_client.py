@@ -56,6 +56,8 @@ def build_config_for_icloud(TMPDIR: str) -> AppConfig:
         manifest_path=CONFIG_DIR / "pyiclodoc-drive-manifest.json",
         auth_state_path=CONFIG_DIR / "pyiclodoc-drive-auth_state.json",
         heartbeat_path=LOGS_DIR / "pyiclodoc-drive-heartbeat.txt",
+        safety_net_done_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_done.flag",
+        safety_net_blocked_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_blocked.flag",
         cookie_dir=COOKIE_DIR,
         session_dir=SESSION_DIR,
         icloudpd_compat_dir=COMPAT_DIR,

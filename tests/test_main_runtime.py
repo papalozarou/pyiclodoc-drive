@@ -69,6 +69,8 @@ def build_config_for_runtime(TMPDIR: str) -> AppConfig:
         manifest_path=CONFIG_DIR / "pyiclodoc-drive-manifest.json",
         auth_state_path=CONFIG_DIR / "pyiclodoc-drive-auth_state.json",
         heartbeat_path=LOGS_DIR / "pyiclodoc-drive-heartbeat.txt",
+        safety_net_done_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_done.flag",
+        safety_net_blocked_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_blocked.flag",
         cookie_dir=CONFIG_DIR / "cookies",
         session_dir=CONFIG_DIR / "session",
         icloudpd_compat_dir=CONFIG_DIR / "icloudpd",
@@ -276,7 +278,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
             LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
-            (CONFIG.config_dir / "pyiclodoc-drive-safety_net_done.flag").write_text("ok\n", encoding="utf-8")
+            CONFIG.safety_net_done_path.write_text("ok\n", encoding="utf-8")
 
             with patch("app.main.run_first_time_safety_net") as RUN_NET:
                 RESULT = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
@@ -292,7 +294,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             CONFIG = build_config_for_runtime(TMPDIR)
             TELEGRAM = TelegramConfig("token", "12345")
             LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
-            BLOCKED = CONFIG.config_dir / "pyiclodoc-drive-safety_net_blocked.flag"
+            BLOCKED = CONFIG.safety_net_blocked_path
             BLOCKED.write_text("blocked\n", encoding="utf-8")
             RESULT = SimpleNamespace(
                 should_block=False,
@@ -306,7 +308,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
                     RETURNED = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
 
             self.assertTrue(RETURNED)
-            self.assertTrue((CONFIG.config_dir / "pyiclodoc-drive-safety_net_done.flag").exists())
+            self.assertTrue(CONFIG.safety_net_done_path.exists())
             self.assertFalse(BLOCKED.exists())
 
 # --------------------------------------------------------------------------
@@ -330,7 +332,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
                         RETURNED = enforce_safety_net(CONFIG, TELEGRAM, LOG_FILE)
 
             self.assertFalse(RETURNED)
-            self.assertTrue((CONFIG.config_dir / "pyiclodoc-drive-safety_net_blocked.flag").exists())
+            self.assertTrue(CONFIG.safety_net_blocked_path.exists())
             self.assertIn("Safety net blocked", NOTIFY.call_args[0][1])
             self.assertIn(
                 "Expected uid 1000, gid 1000",

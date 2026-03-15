@@ -297,8 +297,8 @@ def get_build_detail() -> dict[str, str]:
 # Returns: True when backup can proceed; otherwise False.
 # ------------------------------------------------------------------------------
 def enforce_safety_net(CONFIG: AppConfig, TELEGRAM: TelegramConfig, LOG_FILE: Path) -> bool:
-    DONE_MARKER = CONFIG.config_dir / "pyiclodoc-drive-safety_net_done.flag"
-    BLOCKED_MARKER = CONFIG.config_dir / "pyiclodoc-drive-safety_net_blocked.flag"
+    DONE_MARKER = CONFIG.safety_net_done_path
+    BLOCKED_MARKER = CONFIG.safety_net_blocked_path
 
     if DONE_MARKER.exists():
         return True

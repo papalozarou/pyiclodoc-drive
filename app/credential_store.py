@@ -14,8 +14,17 @@ from keyrings.alt.file import PlaintextKeyring
 
 # ------------------------------------------------------------------------------
 # This function configures a deterministic file-based keyring path.
+#
 # 1. "config_dir" is the root directory used for worker runtime state.
+#
 # Returns: "None".
+#
+# N.B.
+# The environment mutation below forces both "keyring" and "keyrings.alt" to
+# use the mounted config directory instead of the container's default home
+# directory. This keeps credential storage writable for the runtime user and
+# stable across container restarts.
+#
 # Notes: File keyring keeps credentials in mounted container volumes.
 # ------------------------------------------------------------------------------
 def configure_keyring(CONFIG_DIR: Path) -> None:

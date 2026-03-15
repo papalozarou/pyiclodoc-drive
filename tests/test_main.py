@@ -69,6 +69,8 @@ def build_config(**OVERRIDES: object) -> AppConfig:
         manifest_path=Path("/tmp/config/pyiclodoc-drive-manifest.json"),
         auth_state_path=Path("/tmp/config/pyiclodoc-drive-auth_state.json"),
         heartbeat_path=Path("/tmp/logs/pyiclodoc-drive-heartbeat.txt"),
+        safety_net_done_path=Path("/tmp/config/pyiclodoc-drive-safety_net_done.flag"),
+        safety_net_blocked_path=Path("/tmp/config/pyiclodoc-drive-safety_net_blocked.flag"),
         cookie_dir=Path("/tmp/config/cookies"),
         session_dir=Path("/tmp/config/session"),
         icloudpd_compat_dir=Path("/tmp/config/icloudpd"),

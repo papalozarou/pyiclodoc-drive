@@ -61,8 +61,9 @@ def parse_iso(VALUE: str) -> datetime:
 # Returns: Remaining whole days before reauthentication should complete.
 # ------------------------------------------------------------------------------
 def reauth_days_left(LAST_AUTH_UTC: str, INTERVAL_DAYS: int) -> int:
-    LAST_AUTH = parse_iso(LAST_AUTH_UTC).astimezone(now_local().tzinfo)
-    ELAPSED = now_local() - LAST_AUTH
+    CURRENT_TIME = now_local()
+    LAST_AUTH = parse_iso(LAST_AUTH_UTC).astimezone(CURRENT_TIME.tzinfo)
+    ELAPSED = CURRENT_TIME - LAST_AUTH
     REMAINING = timedelta(days=INTERVAL_DAYS) - ELAPSED
     return max(0, int(REMAINING.total_seconds() // 86400))
 

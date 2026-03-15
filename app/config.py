@@ -38,6 +38,8 @@ class AppConfig:
     manifest_path: Path
     auth_state_path: Path
     heartbeat_path: Path
+    safety_net_done_path: Path
+    safety_net_blocked_path: Path
     cookie_dir: Path
     session_dir: Path
     icloudpd_compat_dir: Path
@@ -231,6 +233,8 @@ def load_config() -> AppConfig:
         manifest_path=CONFIG_DIR / "pyiclodoc-drive-manifest.json",
         auth_state_path=CONFIG_DIR / "pyiclodoc-drive-auth_state.json",
         heartbeat_path=LOGS_DIR / "pyiclodoc-drive-heartbeat.txt",
+        safety_net_done_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_done.flag",
+        safety_net_blocked_path=CONFIG_DIR / "pyiclodoc-drive-safety_net_blocked.flag",
         cookie_dir=COOKIE_DIR,
         session_dir=SESSION_DIR,
         icloudpd_compat_dir=COMPAT_DIR,
