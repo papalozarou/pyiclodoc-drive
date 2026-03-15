@@ -22,6 +22,12 @@ RUN_ONCE_AUTH_POLL_SECONDS = 5
 
 # ------------------------------------------------------------------------------
 # This data class groups runtime callbacks used by worker orchestration.
+#
+# N.B.
+# This is the orchestration boundary for the worker loop. The runtime module
+# owns loop control, one-shot waiting, and backup-trigger decisions, while the
+# concrete auth, command, backup, and scheduling behaviour is injected from the
+# surrounding runtime modules.
 # ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class WorkerRuntimeDeps:
@@ -43,6 +49,11 @@ class WorkerRuntimeDeps:
 
 # ------------------------------------------------------------------------------
 # This data class returns worker runtime exit outcome to the process entrypoint.
+#
+# N.B.
+# This keeps the runtime module focused on orchestration decisions and leaves
+# process-exit handling, container-stop notification, and heartbeat shutdown to
+# the caller.
 # ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class WorkerRunResult:

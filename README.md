@@ -2,11 +2,11 @@
 
 A dockerised `pyicloud` implementation for backing up iCloud drives to local storage, with Telegram used for auth prompts and operational control.
 
-It should have all the bits you need for real-world usage, such as: 
+It should have all the bits you need for real-world usage, such as:
 
 * persistent auth/session state;
 * manifest-driven incremental sync;
-* one-shot and scheduled modes; 
+* one-shot and scheduled modes;
 * performance tuning options;
 * comprehensive logging;
 * protection of existing backups via a first-run safety net; and
@@ -16,13 +16,13 @@ It is intended to be set and forget – start it, authorise when needed, and let
 
 *N.B.*
 
-You have probably already guessed from the `PROMPT.md` file that this was AI built. 
+You have probably already guessed from the `PROMPT.md` file that this was AI built.
 
-It started as an experiment to see whether Claude Code or Codex spat out better code using the default models, which I beleive were Sonnet 4.6 and GPT-5.3-Codex. I asked Claude and Codex to rate the outputs and they both said Codex's was significantly better. The project grew from there as I wasn't satisfied with ~11 hour backups using other images. 
+It started as an experiment to see whether Claude Code or Codex produced better code using the default models, which I believe were Sonnet 4.6 and GPT-5.3-Codex. I asked Claude and Codex to rate the outputs and they both said Codex's was significantly better. The project grew from there because I was not satisfied with roughly 11-hour backups using other images.
 
 ## Example usage
 
-The example `compose.yml` and `.env` files run two isolated containers out of the box, Alice and Bob, each with separate config, output, and logs. These examples will give you a flavour of what PyiCloDoc Drive can do, and enough information to configure to your needs. Complete documentation is linked at the end of this readme.
+The example `compose.yml` and `.env` files run two isolated containers out of the box, Alice and Bob, each with separate config, output, and logs. These examples give you a flavour of what PyiCloDoc Drive can do, and enough information to configure it to your needs. Complete documentation is linked at the end of this README.
 
 ### Quick start
 

@@ -9,9 +9,12 @@ import os
 from typing import Optional
 
 
-#
 # ------------------------------------------------------------------------------
 # This data class holds validated configuration values used across worker code.
+#
+# N.B.
+# Reused runtime paths live here so the rest of the worker refers to canonical
+# locations rather than rebuilding path strings inline.
 # ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class AppConfig:
@@ -50,6 +53,10 @@ class AppConfig:
     # This property returns the canonical worker log file path.
     #
     # Returns: Worker log file path derived from "logs_dir".
+    #
+    # N.B.
+    # This keeps worker-log path ownership alongside the other generated runtime
+    # paths such as manifest, auth-state, heartbeat, and safety-net markers.
     # --------------------------------------------------------------------------
     @property
     def worker_log_path(self) -> Path:

@@ -26,6 +26,9 @@
 - Error lines are coloured red in container stdout; file logs remain plain text.
 - Worker logs rotate daily and at size threshold, are compressed to
   `pyiclodoc-drive-worker.*.log.gz`, and are pruned by configured retention days.
+- Logger policy remains environment-driven, but the worker resolves log level
+  and rotation settings through one internal config object so runtime behaviour
+  and tests share the same canonical interpretation.
 
 ## Privilege model
 

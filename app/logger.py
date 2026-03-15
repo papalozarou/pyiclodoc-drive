@@ -26,6 +26,11 @@ ROTATED_FILE_PATTERN = "{name}.{stamp}.log"
 
 # ------------------------------------------------------------------------------
 # This data class stores the effective logger policy for the current process.
+#
+# N.B.
+# The policy is intentionally resolved in one place so log emission, rotation,
+# and tests all use the same interpretation of environment values. This keeps
+# behaviour centralised without introducing pre-emptive global caching.
 # ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class LoggerConfig:
@@ -48,6 +53,11 @@ def get_timestamp() -> str:
 # This function reads all logger settings from environment in one pass.
 #
 # Returns: Immutable logger policy used by console and file logging.
+#
+# N.B.
+# The returned object is cheap to build and is passed down through log helpers
+# during a single logging decision so repeated env parsing stays localised to
+# one canonical seam.
 # ------------------------------------------------------------------------------
 def load_logger_config() -> LoggerConfig:
     DEFAULT_MAX_BYTES = 100 * 1024 * 1024
