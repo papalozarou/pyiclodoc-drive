@@ -17,6 +17,7 @@ from app.config import AppConfig, load_config
 from app.credential_store import configure_keyring, load_credentials, save_credentials
 from app.icloud_client import ICloudDriveClient
 from app.logger import log_line
+from app.runtime_helpers import format_apple_id_label, notify
 from app.scheduler import (
     MONTHLY_WEEK_MAP,
     calculate_next_daily_run_epoch,
@@ -34,7 +35,7 @@ from app.scheduler import (
 from app.runtime_context import WorkerRuntimeContext
 from app.state import AuthState, load_auth_state, load_manifest, now_iso, save_auth_state, save_manifest
 from app.syncer import perform_incremental_sync, run_first_time_safety_net
-from app.telegram_bot import TelegramConfig, fetch_updates, parse_command, send_message
+from app.telegram_bot import TelegramConfig, fetch_updates, parse_command
 from app.telegram_messages import (
     build_backup_skipped_auth_incomplete_message,
     build_backup_skipped_reauth_pending_message,
@@ -160,34 +161,6 @@ def start_heartbeat_updater(PATH: Path) -> threading.Event:
     THREAD = threading.Thread(target=run_heartbeat_loop, daemon=True)
     THREAD.start()
     return STOP_EVENT
-
-
-# ------------------------------------------------------------------------------
-# This function sends a Telegram message when integration is configured.
-#
-# 1. "TELEGRAM" is Telegram integration configuration.
-# 2. "MESSAGE" is outgoing message content.
-#
-# Returns: None.
-# ------------------------------------------------------------------------------
-def notify(TELEGRAM: TelegramConfig, MESSAGE: str) -> None:
-    send_message(TELEGRAM, MESSAGE)
-
-
-# ------------------------------------------------------------------------------
-# This function formats a fallback-safe Apple ID label for Telegram messages.
-#
-# 1. "APPLE_ID" is the configured iCloud email value.
-#
-# Returns: Non-empty Apple ID label.
-# ------------------------------------------------------------------------------
-def format_apple_id_label(APPLE_ID: str) -> str:
-    CLEAN_VALUE = APPLE_ID.strip()
-
-    if CLEAN_VALUE:
-        return CLEAN_VALUE
-
-    return "<unknown>"
 
 
 # ------------------------------------------------------------------------------

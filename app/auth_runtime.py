@@ -11,8 +11,9 @@ from typing import Callable, Protocol
 
 from dateutil import parser as date_parser
 
+from app.runtime_helpers import format_apple_id_label, notify
 from app.state import AuthState, now_iso, save_auth_state
-from app.telegram_bot import TelegramConfig, send_message
+from app.telegram_bot import TelegramConfig
 from app.telegram_messages import (
     build_authentication_complete_message,
     build_authentication_failed_message,
@@ -32,34 +33,6 @@ class AuthClient(Protocol):
 
     def start_authentication(self) -> tuple[bool, str]:
         ...
-
-
-# ------------------------------------------------------------------------------
-# This function sends a Telegram message when integration is configured.
-#
-# 1. "TELEGRAM" is Telegram integration configuration.
-# 2. "MESSAGE" is outgoing message content.
-#
-# Returns: None.
-# ------------------------------------------------------------------------------
-def notify(TELEGRAM: TelegramConfig, MESSAGE: str) -> None:
-    send_message(TELEGRAM, MESSAGE)
-
-
-# ------------------------------------------------------------------------------
-# This function formats a fallback-safe Apple ID label for Telegram messages.
-#
-# 1. "APPLE_ID" is the configured iCloud email value.
-#
-# Returns: Non-empty Apple ID label.
-# ------------------------------------------------------------------------------
-def format_apple_id_label(APPLE_ID: str) -> str:
-    CLEAN_VALUE = APPLE_ID.strip()
-
-    if CLEAN_VALUE:
-        return CLEAN_VALUE
-
-    return "<unknown>"
 
 
 # ------------------------------------------------------------------------------

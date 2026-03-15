@@ -172,7 +172,7 @@ class TestMainRuntimeHelpers(unittest.TestCase):
 # --------------------------------------------------------------------------
     def test_notify_delegates_to_send_message(self) -> None:
         TELEGRAM = TelegramConfig("token", "12345")
-        with patch("app.main.send_message") as SEND:
+        with patch("app.runtime_helpers.send_message") as SEND:
             notify(TELEGRAM, "hello")
         SEND.assert_called_once_with(TELEGRAM, "hello")
 
