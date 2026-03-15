@@ -243,6 +243,7 @@ class TestConfigLoad(unittest.TestCase):
                 self.assertEqual(CONFIG.manifest_path, Path(BASE_ENV["CONFIG_DIR"]) / "pyiclodoc-drive-manifest.json")
                 self.assertEqual(CONFIG.auth_state_path, Path(BASE_ENV["CONFIG_DIR"]) / "pyiclodoc-drive-auth_state.json")
                 self.assertEqual(CONFIG.heartbeat_path, Path(BASE_ENV["LOGS_DIR"]) / "pyiclodoc-drive-heartbeat.txt")
+                self.assertEqual(CONFIG.worker_log_path, Path(BASE_ENV["LOGS_DIR"]) / "pyiclodoc-drive-worker.log")
                 self.assertTrue(CONFIG.config_dir.exists())
                 self.assertTrue(CONFIG.output_dir.exists())
                 self.assertTrue(CONFIG.logs_dir.exists())

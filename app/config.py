@@ -46,6 +46,15 @@ class AppConfig:
     safety_net_sample_size: int
     config_parse_errors: tuple[str, ...] = field(default_factory=tuple)
 
+    # --------------------------------------------------------------------------
+    # This property returns the canonical worker log file path.
+    #
+    # Returns: Worker log file path derived from "logs_dir".
+    # --------------------------------------------------------------------------
+    @property
+    def worker_log_path(self) -> Path:
+        return self.logs_dir / "pyiclodoc-drive-worker.log"
+
 
 # ------------------------------------------------------------------------------
 # This function reads an environment variable with default fallback.

@@ -367,7 +367,7 @@ def handle_command(
             notify_fn=notify,
             save_auth_state_fn=save_auth_state,
             log_line_fn=log_line,
-            log_file_path=CONFIG.logs_dir / "pyiclodoc-drive-worker.log",
+            log_file_path=CONFIG.worker_log_path,
         ),
     )
 
@@ -379,7 +379,7 @@ def handle_command(
 # ------------------------------------------------------------------------------
 def main() -> int:
     CONFIG = load_config()
-    LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
+    LOG_FILE = CONFIG.worker_log_path
     TELEGRAM = TelegramConfig(CONFIG.telegram_bot_token, CONFIG.telegram_chat_id)
     RUNTIME_CONTEXT: WorkerRuntimeContext | None = None
     HEARTBEAT_STOP_EVENT: threading.Event | None = None
