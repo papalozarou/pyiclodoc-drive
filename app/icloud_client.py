@@ -420,6 +420,27 @@ class ICloudDriveClient:
         self._traversal_stats["dir_failure_samples"] = FAILURE_SAMPLES
 
     # --------------------------------------------------------------------------
+    # This function records a failed drive root fetch as a hard failure.
+    #
+    # 1. "ERROR" is the exception raised while fetching the drive root.
+    #
+    # Returns: None.
+    #
+    # N.B. This mirrors "_record_traversal_worker_timeout" below. The drive
+    # root fetch happens once, before any per-directory read or worker-stall
+    # detection runs, so it needs its own hard-failure recorder rather than
+    # reusing a wait-seconds-shaped message.
+    # --------------------------------------------------------------------------
+    def _record_drive_root_failure(self, ERROR: Exception) -> None:
+        with self._stats_lock:
+            self._traversal_stats["dir_hard_failures"] += 1
+            self._record_directory_failure_sample(
+                "/",
+                "hard_failure",
+                f"drive_root_unavailable: {type(ERROR).__name__}: {ERROR}",
+            )
+
+    # --------------------------------------------------------------------------
     # This function records one traversal worker stall as a hard failure.
     #
     # 1. "CURRENT_PATH" is the stalled directory path.
@@ -647,6 +668,16 @@ class ICloudDriveClient:
     # suitable for sync planning.
     #
     # Returns: Flat list of remote entries covering both files and directories.
+    #
+    # N.B. Fetching "self.api.drive" can trigger a PCS consent check against
+    # Apple that has no bounded timeout. A failure here is recorded as a
+    # traversal hard failure so callers treat this run as incomplete, the
+    # same way a stalled or failed directory read does. Without this, a
+    # transient iCloud or network failure here would either crash the whole
+    # worker process, or (if silently swallowed) return an empty entry list
+    # that looks identical to "iCloud Drive is empty". That is dangerous
+    # when "BACKUP_DELETE_REMOVED" is enabled, since it would delete the
+    # entire local backup tree on the next run.
     # --------------------------------------------------------------------------
     def list_entries(self) -> list[RemoteEntry]:
         if self.api is None:
@@ -654,7 +685,16 @@ class ICloudDriveClient:
             return []
 
         self._reset_traversal_stats()
-        DRIVE_ROOT = self.api.drive
+
+        try:
+            DRIVE_ROOT = self.api.drive
+        except Exception as ERROR:
+            self._record_drive_root_failure(ERROR)
+            self._log_debug(
+                "iCloud traversal failed: reason=drive_root_unavailable, "
+                f"error_type={type(ERROR).__name__}."
+            )
+            return []
 
         if self.config.traversal_workers == 1:
             self._log_debug("iCloud traversal started: mode=serial, workers=1.")
