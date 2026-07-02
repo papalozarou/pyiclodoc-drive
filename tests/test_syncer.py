@@ -1457,6 +1457,44 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertTrue(SUMMARY.delete_phase_skipped)
 
 # --------------------------------------------------------------------------
+# This test confirms a failed drive root fetch (which "list_entries" now
+# catches and reports as a hard failure instead of raising) still marks the
+# run incomplete and skips manifest save and delete phase. Without this,
+# "BACKUP_DELETE_REMOVED" deployments could mistake a drive root failure for
+# an empty iCloud Drive and delete the entire local backup tree.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_skips_delete_when_drive_root_unavailable(self) -> None:
+        CLIENT = FakeClient([], {})
+        CLIENT.traversal_stats["dir_hard_failures"] = 1
+        CLIENT.traversal_stats["dir_failure_samples"] = [
+            {
+                "path": "/",
+                "status": "hard_failure",
+                "reason": "drive_root_unavailable: ConnectTimeout: connect timeout",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            EXISTING_PATH = ROOT_DIR / "docs" / "keep.txt"
+            EXISTING_PATH.parent.mkdir(parents=True, exist_ok=True)
+            EXISTING_PATH.write_text("keep", encoding="utf-8")
+
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(
+                CLIENT,
+                ROOT_DIR,
+                {"docs/keep.txt": {"size": 4, "modified": "2026-03-07T12:00:00Z"}},
+                BACKUP_DELETE_REMOVED=True,
+            )
+
+            self.assertTrue(EXISTING_PATH.exists())
+
+        self.assertFalse(SUMMARY.traversal_complete)
+        self.assertEqual(SUMMARY.traversal_hard_failures, 1)
+        self.assertTrue(SUMMARY.delete_phase_skipped)
+        self.assertEqual(NEW_MANIFEST, {})
+
+# --------------------------------------------------------------------------
 # This test confirms traversal worker stalls downgrade into an incomplete
 # sync run instead of escaping as a fatal exception.
 # --------------------------------------------------------------------------
