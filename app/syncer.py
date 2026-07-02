@@ -1417,10 +1417,15 @@ def execute_transfer_attempt(
             "package_item_missing",
             "package_children_unavailable",
         }:
-            return TransferAttemptResult(
-                "terminal_failure",
-                failure_reason="known_package_metadata_unavailable",
+            FILE_RESULT = CLIENT.download_file(ENTRY.path, LOCAL_PATH)
+            if FILE_RESULT.is_success:
+                return TransferAttemptResult("success", transfer_mode="file")
+
+            FAILURE_REASON = get_transfer_failure_reason(
+                FILE_RESULT.failure_reason,
+                PACKAGE_RESULT.failure_reason,
             )
+            return TransferAttemptResult("terminal_failure", failure_reason=FAILURE_REASON)
 
         return TransferAttemptResult(
             "terminal_failure",

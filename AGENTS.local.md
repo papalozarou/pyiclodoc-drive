@@ -2,6 +2,13 @@
 
 These rules apply only to this repository. They extend `AGENTS.md`.
 
+## Review notes
+
+- MUST: Treat review notes as local-only scratch or review material.
+- MUST NOT: Move review notes into tracked files unless explicitly requested.
+- MUST NOT: Suggest tracking, committing, or force-adding review-note files such
+  as `CODE_REVIEW.md`.
+
 ## Context notes
 
 - MUST: Record every major decision in `.context/` as a timestamped Markdown
@@ -29,7 +36,7 @@ These rules apply only to this repository. They extend `AGENTS.md`.
   with narrative filler.
 - MUST NOT: Treat `.context/` notes as a substitute for code comments, tests,
   commit messages, or operational documentation.
-- SHOULD: Create a new context note before or during a major decision, not
+- MUST: Create a new context note before or during a major decision, not
   long after the fact.
-- SHOULD: Prefer one note per major decision boundary rather than mixing
+- MUST: Prefer one note per major decision boundary rather than mixing
   unrelated decisions into one file.

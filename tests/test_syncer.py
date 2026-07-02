@@ -707,10 +707,37 @@ class TestSyncerHelpers(unittest.TestCase):
             self.assertEqual(CLIENT.package_calls, 1)
 
 # --------------------------------------------------------------------------
-# This test confirms known package paths use package-first handling and
-# emit explicit metadata-unavailable diagnostics when needed.
+# This test confirms local-missing package paths fall back to direct file
+# download when package metadata is unavailable.
 # --------------------------------------------------------------------------
-    def test_transfer_if_required_flags_known_package_metadata_unavailable(self) -> None:
+    def test_transfer_if_required_downloads_known_package_as_file_when_metadata_missing(self) -> None:
+        ENTRY = RemoteEntry(
+            path="docs/archive.bundle",
+            is_dir=False,
+            size=4,
+            modified="2026-03-07T12:00:00Z",
+        )
+        CLIENT = FakeClient([ENTRY], {"docs/archive.bundle": True})
+        CLIENT.package_results["docs/archive.bundle"] = False
+        CLIENT.package_failure_reasons["docs/archive.bundle"] = "package_item_missing"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            RESULT = transfer_if_required(
+                CLIENT,
+                Path(TMPDIR),
+                ENTRY,
+                True,
+            )
+
+        self.assertEqual(RESULT, TransferResult(True, 1, "file"))
+        self.assertEqual(CLIENT.download_calls, 1)
+        self.assertEqual(CLIENT.package_calls, 1)
+
+# --------------------------------------------------------------------------
+# This test confirms local-missing package paths remain terminal failures
+# when package metadata and direct file download both fail.
+# --------------------------------------------------------------------------
+    def test_transfer_if_required_fails_known_package_when_direct_fallback_fails(self) -> None:
         ENTRY = RemoteEntry(
             path="docs/archive.bundle",
             is_dir=False,
@@ -731,9 +758,9 @@ class TestSyncerHelpers(unittest.TestCase):
 
         self.assertEqual(
             RESULT,
-            TransferResult(False, 1, "known_package_metadata_unavailable"),
+            TransferResult(False, 1, "download_failed; fallback=package_item_missing"),
         )
-        self.assertEqual(CLIENT.download_calls, 0)
+        self.assertEqual(CLIENT.download_calls, 1)
         self.assertEqual(CLIENT.package_calls, 1)
 
 # --------------------------------------------------------------------------
@@ -1139,6 +1166,33 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(NEW_MANIFEST["docs/archive.bundle"]["package_state"], "package")
 
 # --------------------------------------------------------------------------
+# This test confirms package metadata failures fall back to direct file
+# download and persist normal file metadata.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_persists_file_metadata_for_package_direct_fallback(self) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/archive.bundle", False, 4, "2026-03-12T10:15:30Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {"docs/archive.bundle": True})
+        CLIENT.package_results["docs/archive.bundle"] = False
+        CLIENT.package_failure_reasons["docs/archive.bundle"] = "package_item_missing"
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(CLIENT, ROOT_DIR, {})
+            LOCAL_FILE = ROOT_DIR / "docs" / "archive.bundle"
+            LOCAL_FILE_EXISTS = LOCAL_FILE.is_file()
+
+        self.assertEqual(CLIENT.package_calls, 1)
+        self.assertEqual(CLIENT.download_calls, 1)
+        self.assertEqual(SUMMARY.transferred_files, 1)
+        self.assertEqual(SUMMARY.error_files, 0)
+        self.assertTrue(LOCAL_FILE_EXISTS)
+        self.assertEqual(NEW_MANIFEST["docs/archive.bundle"]["entry_kind"], "file")
+        self.assertNotIn("package_state", NEW_MANIFEST["docs/archive.bundle"])
+        self.assertNotIn("package_signature", NEW_MANIFEST["docs/archive.bundle"])
+
+# --------------------------------------------------------------------------
 # This test confirms delete-removed mode prunes stale local files and
 # empty directories that no longer exist remotely.
 # --------------------------------------------------------------------------
@@ -1401,6 +1455,44 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertFalse(SUMMARY.traversal_complete)
         self.assertEqual(SUMMARY.traversal_hard_failures, 1)
         self.assertTrue(SUMMARY.delete_phase_skipped)
+
+# --------------------------------------------------------------------------
+# This test confirms a failed drive root fetch (which "list_entries" now
+# catches and reports as a hard failure instead of raising) still marks the
+# run incomplete and skips manifest save and delete phase. Without this,
+# "BACKUP_DELETE_REMOVED" deployments could mistake a drive root failure for
+# an empty iCloud Drive and delete the entire local backup tree.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_skips_delete_when_drive_root_unavailable(self) -> None:
+        CLIENT = FakeClient([], {})
+        CLIENT.traversal_stats["dir_hard_failures"] = 1
+        CLIENT.traversal_stats["dir_failure_samples"] = [
+            {
+                "path": "/",
+                "status": "hard_failure",
+                "reason": "drive_root_unavailable: ConnectTimeout: connect timeout",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            ROOT_DIR = Path(TMPDIR)
+            EXISTING_PATH = ROOT_DIR / "docs" / "keep.txt"
+            EXISTING_PATH.parent.mkdir(parents=True, exist_ok=True)
+            EXISTING_PATH.write_text("keep", encoding="utf-8")
+
+            SUMMARY, NEW_MANIFEST = perform_incremental_sync(
+                CLIENT,
+                ROOT_DIR,
+                {"docs/keep.txt": {"size": 4, "modified": "2026-03-07T12:00:00Z"}},
+                BACKUP_DELETE_REMOVED=True,
+            )
+
+            self.assertTrue(EXISTING_PATH.exists())
+
+        self.assertFalse(SUMMARY.traversal_complete)
+        self.assertEqual(SUMMARY.traversal_hard_failures, 1)
+        self.assertTrue(SUMMARY.delete_phase_skipped)
+        self.assertEqual(NEW_MANIFEST, {})
 
 # --------------------------------------------------------------------------
 # This test confirms traversal worker stalls downgrade into an incomplete

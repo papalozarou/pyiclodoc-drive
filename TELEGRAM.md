@@ -1,64 +1,89 @@
 # Telegram
 
-## Command format
+Use Telegram to send commands to each container and receive backup status
+messages. It lets you complete iCloud authentication or start a backup without
+opening Docker.
 
-Commands are only accepted from the chat ID configured in `H_TGM_CHAT_ID`.
-If `H_TGM_CHAT_ID` is unset, Telegram command handling is disabled.
+Commands only work from the chat ID set in `H_TGM_CHAT_ID`. If `H_TGM_CHAT_ID`
+is unset, Telegram command handling is disabled.
 
-Supported command forms:
+## Commands
 
-- `<username> backup`
-- `<username> auth`
-- `<username> auth 123456`
-- `<username> reauth`
-- `<username> reauth 123456`
+Send commands in this form:
 
-N.B.
+```text
+alice backup
+alice auth
+alice auth 123456
+alice reauth
+alice reauth 123456
+```
 
-`<username>` must match the container username for that worker service.
+Replace `alice` with the container username set by `CONTAINER_USERNAME`.
 
-## Authentication and reauthentication flow
+The supported commands are:
 
-1. On startup, the worker attempts iCloud authentication using saved session
-   state and configured credentials.
-2. If MFA is required, the worker marks auth pending and sends a prompt.
-3. The user sends either `auth <code>` or `reauth <code>` via Telegram to
-   complete the current pending challenge.
-4. `auth <code>` and `reauth <code>` do not start a fresh login attempt; they
-   only validate against the active pending session.
-5. On worker startup, the container captures one Telegram update cursor
-   snapshot and discards only the queued updates already visible at that
-   cursor.
-6. After that snapshot, the worker switches to live polling from the captured
-   offset, so later commands are preserved for active handling.
-7. Startup cutover still completes even if newer Telegram updates keep
-   arriving while the worker is starting.
-8. One-shot and scheduled modes both use the same cutover contract, so a
-   restart does not change which commands count as backlog.
-9. If a worker restart clears in-memory auth session state, send `auth` or
-   `reauth` without a code first to trigger a new challenge prompt.
-10. If successful, pending auth state is cleared and normal backup flow
-    resumes.
+- `<username> backup`: run a backup now
+- `<username> auth`: start or restart the current authentication prompt
+- `<username> auth 123456`: submit an MFA code for authentication
+- `<username> reauth`: start or restart the current reauthentication prompt
+- `<username> reauth 123456`: submit an MFA code for reauthentication
 
-## Password file behaviour
+## First-time authentication
 
-`<SVC>_ICLOUD_PASSWORD_FILE` can hold either:
+On startup, the container tries to reuse its saved iCloud session and the
+credentials from your secret files.
 
-- an Apple Account password; or
-- an app-specific password.
+If iCloud asks for MFA, the container sends an authentication prompt to Telegram.
+Reply with:
 
-The value is passed directly to `pyicloud`, and final auth/MFA handling still
-follows Apple account policy.
+```text
+alice auth 123456
+```
 
-## Outbound Telegram messages
+`auth 123456` does not start a fresh login. It answers the active challenge
+that iCloud already issued.
 
-Messages use this compact plain-text structure:
+If the container restarts and loses the current challenge, send this first:
 
-- Emoji header in sentence case.
-- One-line action summary including Apple ID.
-- Optional compact status lines.
+```text
+alice auth
+```
 
-Current message templates include:
+That tells the container to start a new challenge and send a fresh prompt.
+
+## Reauthentication
+
+Reauthentication uses the same command shape:
+
+```text
+alice reauth
+alice reauth 123456
+```
+
+Use `reauth` when the container says reauthentication is required. Use
+`reauth 123456` to submit the code from Apple.
+
+## Manual backups
+
+Send:
+
+```text
+alice backup
+```
+
+The container starts a backup as soon as it can. If a backup is already running,
+Telegram reports that instead.
+
+## Messages you will see
+
+Messages use compact plain text:
+
+- an emoji header in sentence case
+- one-line action summary including the Apple ID
+- short status lines where they help
+
+Common headers include:
 
 - `🟢 PCD Drive - Container started`
 - `🛑 PCD Drive - Container stopped`
@@ -73,20 +98,48 @@ Current message templates include:
 - `⚠️ PCD Drive - Safety net blocked`
 - `📣 PCD Drive - Reauth reminder`
 
-Backup completion messages include:
+Backup completion messages can include:
 
 - `Transferred: <done>/<total>`
 - `Skipped: <count>`
-- `Errors: <count>` where the count includes both transfer and delete-phase errors
-- `Delete errors: <count>` when mirror-delete encountered cleanup failures
+- `Errors: <count>`
+- `Delete errors: <count>`
 - `Duration: <hh:mm:ss>`
-- `Average speed: <value> MiB/s` (only when files were downloaded)
+- `Average speed: <value> MiB/s`
 
-Backup start messages include:
+`Errors` includes transfer errors and delete-phase errors. `Average speed`
+appears only when files were downloaded.
+
+Backup start messages include either:
 
 - `Scheduled <plain English schedule>`
 - `Manual, then <plain English schedule>`
 
-Safety-net blocked messages include an explicit expected ownership line:
+Safety-net blocked messages include the UID and GID the container expected:
 
-- `Expected uid <uid>, gid <gid>`
+```text
+Expected uid <uid>, gid <gid>
+```
+
+## When commands are ignored
+
+Commands are ignored when:
+
+- they come from a different Telegram chat
+- `H_TGM_CHAT_ID` is unset
+- the username does not match that container
+- the command is not one of the supported forms above
+
+On startup, the container discards old queued Telegram updates once, then
+switches to live polling. That stops old commands from firing after a restart
+while keeping commands that arrive after the container has started.
+
+## Password files
+
+`<SVC>_ICLOUD_PASSWORD_FILE` can contain either:
+
+- an Apple Account password
+- an app-specific password
+
+The container passes the value to `pyicloud`. Apple still decides whether MFA is
+needed.

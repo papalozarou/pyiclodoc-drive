@@ -1105,6 +1105,157 @@ class TestWorkerRuntime(unittest.TestCase):
         )
 
 # --------------------------------------------------------------------------
+# This test confirms the scheduled loop survives the 2026-06-14 class of
+# failure: an unguarded drive root fetch raising inside "list_entries". Real
+# "ICloudDriveClient.list_entries" now catches that exception and returns an
+# empty list with "dir_hard_failures" set instead of letting it escape, so
+# this fake reproduces exactly that contract rather than a raised
+# "TraversalWorkerTimeoutError". Before the fix, the real exception had no
+# handler anywhere on this call stack and crashed the whole worker process.
+# --------------------------------------------------------------------------
+    def test_run_scheduled_worker_loop_survives_drive_root_failure_backup_flow(self) -> None:
+        class DriveRootFailureClient:
+            def list_entries(self):
+                return []
+
+            def get_traversal_stats_snapshot(self):
+                return (
+                    build_empty_traversal_stats_snapshot()
+                    | {
+                        "dir_hard_failures": 1,
+                        "dir_failure_samples": [
+                            {
+                                "path": "/",
+                                "status": "hard_failure",
+                                "reason": (
+                                    "drive_root_unavailable: ConnectTimeout: "
+                                    "connect timeout"
+                                ),
+                            }
+                        ],
+                    }
+                )
+
+            def download_file(self, REMOTE_PATH, LOCAL_PATH):
+                _ = REMOTE_PATH
+                _ = LOCAL_PATH
+                return DownloadResult(True)
+
+            def download_package_tree(self, REMOTE_PATH, LOCAL_PATH):
+                _ = REMOTE_PATH
+                _ = LOCAL_PATH
+                return DownloadResult(True)
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            RUNTIME_CONTEXT, TELEGRAM, AUTH_STATE = self.build_runtime_context(TMPDIR)
+            CONFIG = AppConfig(
+                **(
+                    RUNTIME_CONTEXT.config.__dict__
+                    | {
+                        "backup_delete_removed": True,
+                    }
+                )
+            )
+            RUNTIME_CONTEXT = WorkerRuntimeContext(
+                config=CONFIG,
+                telegram=RUNTIME_CONTEXT.telegram,
+                log_file=RUNTIME_CONTEXT.log_file,
+                apple_id_label=RUNTIME_CONTEXT.apple_id_label,
+            )
+            STALE_PATH = CONFIG.output_dir / "docs" / "stale.txt"
+            STALE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            STALE_PATH.write_text("stale", encoding="utf-8")
+            PROCESS_COMMANDS = Mock(return_value=([], None))
+            SAVE_MANIFEST = Mock(return_value=True)
+            SLEEP_CALLS = {"count": 0}
+            NEXT_RUN_EPOCHS: list[int] = []
+            EXISTING_MANIFEST = {
+                "docs/known.txt": {
+                    "modified": "2026-03-01T00:00:00Z",
+                    "size": 1,
+                }
+            }
+
+            def get_next_run_epoch_fn(_CONFIG, NOW_EPOCH):
+                NEXT_RUN_EPOCHS.append(NOW_EPOCH)
+                return 200 if len(NEXT_RUN_EPOCHS) == 1 else 500
+
+            def sleep_fn(_SECONDS: float) -> None:
+                SLEEP_CALLS["count"] += 1
+                if SLEEP_CALLS["count"] >= 2:
+                    raise StopWorkerLoop()
+
+            DEPS = self.build_deps(
+                PROCESS_COMMANDS_FN=PROCESS_COMMANDS,
+                HANDLE_COMMAND_FN=Mock(),
+                ENFORCE_SAFETY_NET_FN=Mock(return_value=True),
+                NOTIFY_FN=Mock(),
+                SLEEP_FN=sleep_fn,
+            )
+            DEPS.time_fn = Mock(side_effect=[100, 200, 200, 200])
+            DEPS.get_next_run_epoch_fn = Mock(side_effect=get_next_run_epoch_fn)
+
+            def run_backup_fn(CLIENT, CONFIG, TELEGRAM, LOG_FILE, BACKUP_TRIGGER):
+                _ = BACKUP_TRIGGER
+                return run_backup_once(
+                    CLIENT,
+                    CONFIG,
+                    TELEGRAM,
+                    LOG_FILE,
+                    "alice@example.com",
+                    "Scheduled daily at 02:00.",
+                    BackupRuntimeDeps(
+                        load_manifest_fn=lambda _PATH: dict(EXISTING_MANIFEST),
+                        save_manifest_fn=SAVE_MANIFEST,
+                        log_line_fn=DEPS.log_line_fn,
+                        notify_fn=DEPS.notify_fn,
+                    ),
+                )
+
+            DEPS.run_backup_fn = Mock(side_effect=run_backup_fn)
+            CLIENT = DriveRootFailureClient()
+
+            with patch("app.syncer.log_line", side_effect=DEPS.log_line_fn):
+                with self.assertRaises(StopWorkerLoop):
+                    run_scheduled_worker_loop(
+                        RUNTIME_CONTEXT,
+                        CLIENT,
+                        WorkerAuthState(auth_state=AUTH_STATE, is_authenticated=True),
+                        CommandPollingState(phase="live_polling", next_update_offset=None),
+                        DEPS,
+                    )
+            self.assertTrue(STALE_PATH.exists())
+
+        SAVE_MANIFEST.assert_not_called()
+        DEPS.run_backup_fn.assert_called_once_with(
+            CLIENT,
+            CONFIG,
+            TELEGRAM,
+            RUNTIME_CONTEXT.log_file,
+            "scheduled",
+        )
+        self.assertEqual(NEXT_RUN_EPOCHS, [100, 200])
+        ERROR_LINES = [
+            CALL.args[2]
+            for CALL in DEPS.log_line_fn.call_args_list
+            if CALL.args[1] == "error"
+        ]
+        self.assertTrue(
+            any(
+                "Manifest save skipped because traversal was incomplete."
+                in LINE
+                for LINE in ERROR_LINES
+            )
+        )
+        self.assertTrue(
+            any(
+                "Scheduled backup did not complete successfully." in LINE
+                and "next scheduled run will retry" in LINE
+                for LINE in ERROR_LINES
+            )
+        )
+
+# --------------------------------------------------------------------------
 # This test confirms a handled traversal failure during a due scheduled run
 # leaves the worker alive, keeps the next schedule, and emits visible retry
 # guidance instead of crashing the loop.

@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, PropertyMock, patch
 
 from tests._stubs import install_dependency_stubs
 
@@ -280,6 +280,25 @@ class TestICloudClientTraversal(unittest.TestCase):
             self.assertGreater(STATS.get("directories_completed", 0), 0)
             self.assertEqual(STATS.get("directories_pending", 0), 0)
             self.assertEqual(STATS.get("workers_active", 0), 0)
+
+    def test_list_entries_records_hard_failure_when_drive_root_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+
+            API = Mock()
+            type(API).drive = PropertyMock(side_effect=RuntimeError("connect timeout"))
+            CLIENT.api = API
+
+            ENTRIES = CLIENT.list_entries()
+
+            self.assertEqual(ENTRIES, [])
+            STATS = CLIENT.get_traversal_stats_snapshot()
+            self.assertEqual(STATS["dir_hard_failures"], 1)
+            self.assertEqual(len(STATS["dir_failure_samples"]), 1)
+            self.assertIn(
+                "drive_root_unavailable", STATS["dir_failure_samples"][0]["reason"]
+            )
 
     def test_list_entries_supports_name_list_payload(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
