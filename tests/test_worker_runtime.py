@@ -22,7 +22,7 @@ from app.command_runtime import (
 )
 from app.backup_runtime import BackupRunResult, BackupRuntimeDeps, run_backup as run_backup_once
 from app.config import AppConfig
-from app.icloud_client import DownloadResult, TraversalWorkerTimeoutError
+from app.icloud_client import DownloadResult
 from app.runtime_context import WorkerRuntimeContext
 from app.state import AuthState
 from app.syncer import build_empty_traversal_stats_snapshot
@@ -936,9 +936,7 @@ class TestWorkerRuntime(unittest.TestCase):
     def test_run_scheduled_worker_loop_survives_real_traversal_failure_backup_flow(self) -> None:
         class StalledClient:
             def list_entries(self):
-                raise TraversalWorkerTimeoutError(
-                    "Traversal worker stalled while reading / after 30.0s."
-                )
+                return []
 
             def get_traversal_stats_snapshot(self):
                 return (
@@ -949,7 +947,7 @@ class TestWorkerRuntime(unittest.TestCase):
                             {
                                 "path": "/",
                                 "status": "hard_failure",
-                                "reason": "worker_timeout_after_30.0s",
+                                "reason": "worker_timeout_after_190.0s",
                             }
                         ],
                     }
@@ -1069,9 +1067,6 @@ class TestWorkerRuntime(unittest.TestCase):
             for CALL in DEPS.notify_fn.call_args_list
         ]
         self.assertTrue(
-            any("Traversal failed before completion:" in LINE for LINE in ERROR_LINES)
-        )
-        self.assertTrue(
             any(
                 "Manifest save skipped because traversal was incomplete."
                 in LINE
@@ -1109,9 +1104,9 @@ class TestWorkerRuntime(unittest.TestCase):
 # failure: an unguarded drive root fetch raising inside "list_entries". Real
 # "ICloudDriveClient.list_entries" now catches that exception and returns an
 # empty list with "dir_hard_failures" set instead of letting it escape, so
-# this fake reproduces exactly that contract rather than a raised
-# "TraversalWorkerTimeoutError". Before the fix, the real exception had no
-# handler anywhere on this call stack and crashed the whole worker process.
+# this fake reproduces exactly that contract. Before the fix, the real
+# exception had no handler anywhere on this call stack and crashed the
+# whole worker process.
 # --------------------------------------------------------------------------
     def test_run_scheduled_worker_loop_survives_drive_root_failure_backup_flow(self) -> None:
         class DriveRootFailureClient:

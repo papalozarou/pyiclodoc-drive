@@ -27,6 +27,26 @@ TRAVERSAL_FAILURE_SAMPLE_LIMIT = 5
 TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS = 30.0
 ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS = 10.0
 ICLOUD_SESSION_READ_TIMEOUT_SECONDS = 30.0
+
+# ------------------------------------------------------------------------------
+# This value is the cumulative no-progress duration that must elapse before a
+# parallel traversal worker is treated as genuinely stalled rather than still
+# retrying normally.
+#
+# N.B.
+# Derived, not a flat constant: "DIR_RETRY_ATTEMPTS" retries at up to
+# "ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS" plus
+# "ICLOUD_SESSION_READ_TIMEOUT_SECONDS" each is the worst-case time a single
+# directory read can legitimately take before
+# "_read_dir_payload_with_retry" gives up and records its own hard failure.
+# One extra "TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS" poll interval is added
+# as margin so this threshold never fires before that retry ceiling has had
+# a real chance to resolve on its own.
+# ------------------------------------------------------------------------------
+TRAVERSAL_WORKER_STALL_ABORT_SECONDS = (
+    DIR_RETRY_ATTEMPTS
+    * (ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS + ICLOUD_SESSION_READ_TIMEOUT_SECONDS)
+) + TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS
 SESSION_INVALID_HTTP_CODE = 421
 SESSION_INVALID_MARKER_TEXT = "X-APPLE-WEBAUTH"
 
@@ -104,18 +124,6 @@ class TraversalProgressSnapshot(TypedDict):
     entries_discovered: int
     dir_reads: int
     dir_retries: int
-
-
-# ------------------------------------------------------------------------------
-# This exception signals a bounded parallel traversal stall.
-#
-# N.B.
-# Callers should treat this as an incomplete traversal result, not as proof the
-# whole worker process must exit. The client records traversal failure
-# telemetry before raising this exception.
-# ------------------------------------------------------------------------------
-class TraversalWorkerTimeoutError(RuntimeError):
-    pass
 
 
 # ------------------------------------------------------------------------------
@@ -482,7 +490,8 @@ class ICloudDriveClient:
     # This function records one traversal worker stall as a hard failure.
     #
     # 1. "CURRENT_PATH" is the stalled directory path.
-    # 2. "WAIT_SECONDS" is the worker wait timeout threshold.
+    # 2. "WAIT_SECONDS" is the cumulative time spent with no traversal
+    #    progress before this worker was given up on.
     #
     # Returns: None.
     # --------------------------------------------------------------------------
@@ -818,13 +827,39 @@ class ICloudDriveClient:
     # 1. "ROOT_NODE" is the iCloud Drive root node.
     # 2. "ROOT_PATH" is the relative path prefix for the root node.
     #
-    # Returns: Flat list of discovered remote entries.
+    # Returns: Flat list of discovered remote entries. Entries already found
+    # before a genuine stall are still returned; they are not discarded.
+    #
+    # N.B.
+    # A worker is only treated as stalled once no traversal progress has been
+    # observed for "TRAVERSAL_WORKER_STALL_ABORT_SECONDS" (see its own
+    # comment for why that value comfortably exceeds a single directory's
+    # worst-case retry ceiling). This function never raises on a stall; every
+    # directory read already has its own bounded per-request timeout (see
+    # "_set_default_session_timeout"), so a directory that never resolves is
+    # a genuine anomaly rather than a hang this function needs to protect
+    # against by aborting outright. Giving up here means only: stop waiting
+    # on the currently in-flight reads and return what has already been
+    # discovered, recording the stall as a hard failure exactly like any
+    # other directory-read failure.
+    #
+    # The executor is managed manually, not via a "with" block, because
+    # "ThreadPoolExecutor.__exit__" always calls "shutdown(wait=True)"
+    # regardless of what happened inside the block. That would silently
+    # re-block on the very reads this function is trying to stop waiting
+    # for. "shutdown(wait=False, cancel_futures=True)" only cancels
+    # not-yet-started reads; a read already in flight keeps running in the
+    # background until its own timeout resolves it, but this function no
+    # longer waits on it.
     # --------------------------------------------------------------------------
     def _walk_node_parallel(self, ROOT_NODE: Any, ROOT_PATH: str) -> list[RemoteEntry]:
         RESULT: list[RemoteEntry] = []
         DIRECTORIES_COMPLETED = 0
+        STALL_STARTED_EPOCH: float | None = None
+        IS_STALLED = False
 
-        with ThreadPoolExecutor(max_workers=self.config.traversal_workers) as EXECUTOR:
+        EXECUTOR = ThreadPoolExecutor(max_workers=self.config.traversal_workers)
+        try:
             FUTURES = {
                 EXECUTOR.submit(self._walk_node_shallow, ROOT_NODE, ROOT_PATH): ROOT_PATH,
             }
@@ -849,6 +884,20 @@ class ICloudDriveClient:
                         CURRENT_PROGRESS_SNAPSHOT,
                     ):
                         LAST_PROGRESS_SNAPSHOT = CURRENT_PROGRESS_SNAPSHOT
+                        STALL_STARTED_EPOCH = None
+                        self._record_traversal_queue_state(
+                            DIRECTORIES_COMPLETED,
+                            len(FUTURES),
+                            min(len(FUTURES), self.config.traversal_workers),
+                        )
+                        continue
+
+                    NOW_EPOCH = time.monotonic()
+                    if STALL_STARTED_EPOCH is None:
+                        STALL_STARTED_EPOCH = NOW_EPOCH
+
+                    STALLED_SECONDS = NOW_EPOCH - STALL_STARTED_EPOCH
+                    if STALLED_SECONDS < TRAVERSAL_WORKER_STALL_ABORT_SECONDS:
                         self._record_traversal_queue_state(
                             DIRECTORIES_COMPLETED,
                             len(FUTURES),
@@ -860,20 +909,14 @@ class ICloudDriveClient:
                         CURRENT_PATH or "/"
                         for CURRENT_PATH in FUTURES.values()
                     )[0]
-                    self._record_traversal_worker_timeout(
-                        STALLED_PATH,
-                        TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS,
-                    )
+                    self._record_traversal_worker_timeout(STALLED_PATH, STALLED_SECONDS)
                     self._record_traversal_queue_state(
                         DIRECTORIES_COMPLETED,
                         len(FUTURES),
                         min(len(FUTURES), self.config.traversal_workers),
                     )
-                    raise TraversalWorkerTimeoutError(
-                        "Traversal worker stalled while reading "
-                        f"{STALLED_PATH} after "
-                        f"{TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS:.1f}s."
-                    )
+                    IS_STALLED = True
+                    break
 
                 for FUTURE in DONE_FUTURES:
                     del FUTURES[FUTURE]
@@ -892,6 +935,8 @@ class ICloudDriveClient:
                     len(FUTURES),
                     min(len(FUTURES), self.config.traversal_workers),
                 )
+        finally:
+            EXECUTOR.shutdown(wait=not IS_STALLED, cancel_futures=IS_STALLED)
 
         return sorted(RESULT, key=lambda ENTRY: ENTRY.path)
 

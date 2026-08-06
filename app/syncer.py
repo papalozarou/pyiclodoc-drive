@@ -19,7 +19,6 @@ from app.icloud_client import (
     DownloadResult,
     ICloudDriveClient,
     RemoteEntry,
-    TraversalWorkerTimeoutError,
     TraversalStatsSnapshot,
     is_session_invalid_failure,
 )
@@ -352,19 +351,14 @@ def perform_incremental_sync(
     BACKUP_DELETE_REMOVED: bool = False,
 ) -> tuple[SyncResult, dict[str, dict[str, Any]]]:
     TRAVERSAL_STARTED_EPOCH = time.monotonic()
-    TRAVERSAL_ERROR_DETAIL = ""
     if LOG_FILE is not None:
         log_line(LOG_FILE, "info", "Traversal started.")
 
-    try:
-        ENTRIES = list_entries_with_progress(
-            CLIENT,
-            LOG_FILE,
-            TRAVERSAL_STARTED_EPOCH,
-        )
-    except TraversalWorkerTimeoutError as ERROR:
-        ENTRIES = []
-        TRAVERSAL_ERROR_DETAIL = str(ERROR)
+    ENTRIES = list_entries_with_progress(
+        CLIENT,
+        LOG_FILE,
+        TRAVERSAL_STARTED_EPOCH,
+    )
 
     TRAVERSAL_HARD_FAILURES = get_traversal_hard_failure_count(CLIENT)
     TRAVERSAL_COMPLETE = TRAVERSAL_HARD_FAILURES == 0
@@ -404,13 +398,6 @@ def perform_incremental_sync(
                 "Traversal incomplete. Delete phase and manifest save will be skipped "
                 "for this run.",
             )
-            if TRAVERSAL_ERROR_DETAIL:
-                log_line(
-                    LOG_FILE,
-                    "debug",
-                    "Traversal incomplete detail: "
-                    f"reason={TRAVERSAL_ERROR_DETAIL}",
-                )
 
     ensure_directories(OUTPUT_DIR, DIRECTORIES, LOG_FILE)
     NEW_MANIFEST: dict[str, dict[str, Any]] = {}
@@ -873,15 +860,6 @@ def list_entries_with_progress(
                 if LOG_FILE is not None:
                     log_traversal_completion_details(LOG_FILE, CLIENT)
                 return RESULT
-            except TraversalWorkerTimeoutError as ERROR:
-                if LOG_FILE is not None:
-                    log_line(
-                        LOG_FILE,
-                        "error",
-                        f"Traversal failed before completion: {ERROR}",
-                    )
-                    log_traversal_completion_details(LOG_FILE, CLIENT)
-                raise
             except TimeoutError:
                 if LOG_FILE is None:
                     continue
