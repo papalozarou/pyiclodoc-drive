@@ -14,7 +14,12 @@ from tests._stubs import install_dependency_stubs
 install_dependency_stubs()
 
 from app.config import AppConfig
-from app.icloud_client import ICloudDriveClient, TraversalWorkerTimeoutError
+from app.icloud_client import (
+    ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS,
+    ICLOUD_SESSION_READ_TIMEOUT_SECONDS,
+    ICloudDriveClient,
+    TraversalWorkerTimeoutError,
+)
 
 
 # ------------------------------------------------------------------------------
@@ -138,6 +143,59 @@ class TestICloudClientAuth(unittest.TestCase):
                 CONFIG.icloud_email,
                 CONFIG.icloud_password,
                 cookie_directory=str(CONFIG.cookie_dir),
+            )
+
+    def test_create_service_wraps_session_with_default_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            API = Mock()
+            ORIGINAL_REQUEST = Mock(return_value="request-response")
+            ORIGINAL_REQUEST_RAW = Mock(return_value="request-raw-response")
+            API.session.request = ORIGINAL_REQUEST
+            API.session.request_raw = ORIGINAL_REQUEST_RAW
+
+            with patch("app.icloud_client.PyiCloudService", return_value=API):
+                CLIENT._create_service()
+
+            self.assertIsNot(API.session.request, ORIGINAL_REQUEST)
+            self.assertIsNot(API.session.request_raw, ORIGINAL_REQUEST_RAW)
+
+            DEFAULT_TIMEOUT = (
+                ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS,
+                ICLOUD_SESSION_READ_TIMEOUT_SECONDS,
+            )
+
+            API.session.request("GET", "https://example.invalid")
+            ORIGINAL_REQUEST.assert_called_once_with(
+                "GET",
+                "https://example.invalid",
+                timeout=DEFAULT_TIMEOUT,
+            )
+
+            API.session.request_raw("POST", "https://example.invalid")
+            ORIGINAL_REQUEST_RAW.assert_called_once_with(
+                "POST",
+                "https://example.invalid",
+                timeout=DEFAULT_TIMEOUT,
+            )
+
+    def test_create_service_preserves_explicit_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            API = Mock()
+            ORIGINAL_REQUEST = Mock(return_value="request-response")
+            API.session.request = ORIGINAL_REQUEST
+
+            with patch("app.icloud_client.PyiCloudService", return_value=API):
+                CLIENT._create_service()
+
+            API.session.request("GET", "https://example.invalid", timeout=5)
+            ORIGINAL_REQUEST.assert_called_once_with(
+                "GET",
+                "https://example.invalid",
+                timeout=5,
             )
 
     def test_authenticate_success_without_2fa(self) -> None:
