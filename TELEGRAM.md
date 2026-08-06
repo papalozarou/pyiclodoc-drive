@@ -100,6 +100,7 @@ Common headers include:
 
 Backup completion messages can include:
 
+- `Status: Failure looks like a dead iCloud session, reauthentication may be required`
 - `Transferred: <done>/<total>`
 - `Skipped: <count>`
 - `Errors: <count>`
@@ -108,7 +109,10 @@ Backup completion messages can include:
 - `Average speed: <value> MiB/s`
 
 `Errors` includes transfer errors and delete-phase errors. `Average speed`
-appears only when files were downloaded.
+appears only when files were downloaded. The session-invalid status line
+appears when a run hit an Apple 421 auth-cookie failure during traversal or
+download; it is informational only and does not skip or gate any future
+backup — run `/reauth` if backups keep failing this way.
 
 Backup start messages include either:
 

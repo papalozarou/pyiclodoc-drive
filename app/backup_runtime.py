@@ -310,6 +310,7 @@ def run_backup(
     TRAVERSAL_COMPLETE = bool(SUMMARY.traversal_complete)
     TRAVERSAL_HARD_FAILURES = max(int(SUMMARY.traversal_hard_failures), 0)
     DELETE_PHASE_SKIPPED = bool(SUMMARY.delete_phase_skipped)
+    SESSION_INVALID = bool(SUMMARY.session_invalid)
     MANIFEST_UPDATED = False
 
     if TRAVERSAL_COMPLETE:
@@ -348,6 +349,12 @@ def run_backup(
     DURATION_SECONDS = int(time.time()) - RUN_START_EPOCH
     AVERAGE_SPEED = DEPS.format_speed_fn(SUMMARY.transferred_bytes, DURATION_SECONDS)
     STATUS_LINES: list[str] = []
+
+    if SESSION_INVALID:
+        STATUS_LINES.append(
+            "Status: Failure looks like a dead iCloud session, "
+            "reauthentication may be required"
+        )
 
     if not TRAVERSAL_COMPLETE:
         STATUS_LINES.extend(
@@ -388,6 +395,7 @@ def run_backup(
         "Backup completion detail: "
         f"duration_seconds={DURATION_SECONDS}, "
         f"average_speed={AVERAGE_SPEED}, "
+        f"session_invalid={SESSION_INVALID}, "
         f"status_lines={len(STATUS_LINES)}",
     )
     COMPLETION_MESSAGE = build_backup_complete_message(APPLE_ID_LABEL, STATUS_LINES)

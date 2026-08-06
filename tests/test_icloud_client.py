@@ -15,10 +15,12 @@ install_dependency_stubs()
 
 from app.config import AppConfig
 from app.icloud_client import (
+    DIR_RETRY_ATTEMPTS,
     ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS,
     ICLOUD_SESSION_READ_TIMEOUT_SECONDS,
     ICloudDriveClient,
     TraversalWorkerTimeoutError,
+    is_session_invalid_failure,
 )
 
 
@@ -96,6 +98,34 @@ class FakeDriveChild:
             return []
 
         raise AttributeError("file node has no dir()")
+
+
+# ------------------------------------------------------------------------------
+# These tests validate the session-invalid failure classifier.
+# ------------------------------------------------------------------------------
+class TestICloudClientSessionInvalidClassifier(unittest.TestCase):
+    def test_is_session_invalid_failure_matches_int_code(self) -> None:
+        ERROR = RuntimeError("Authentication required for Account.")
+        ERROR.code = 421
+        self.assertTrue(is_session_invalid_failure(ERROR))
+
+    def test_is_session_invalid_failure_matches_string_code(self) -> None:
+        ERROR = RuntimeError("Authentication required for Account.")
+        ERROR.code = "421"
+        self.assertTrue(is_session_invalid_failure(ERROR))
+
+    def test_is_session_invalid_failure_falls_back_to_marker_text(self) -> None:
+        ERROR = RuntimeError("... Missing X-APPLE-WEBAUTH-USER cookie")
+        self.assertTrue(is_session_invalid_failure(ERROR))
+
+    def test_is_session_invalid_failure_rejects_unrelated_error(self) -> None:
+        ERROR = RuntimeError("connect timeout")
+        self.assertFalse(is_session_invalid_failure(ERROR))
+
+    def test_is_session_invalid_failure_ignores_other_auth_codes(self) -> None:
+        ERROR = RuntimeError("Two-factor code required.")
+        ERROR.code = 409
+        self.assertFalse(is_session_invalid_failure(ERROR))
 
 
 # ------------------------------------------------------------------------------
@@ -357,6 +387,24 @@ class TestICloudClientTraversal(unittest.TestCase):
             self.assertIn(
                 "drive_root_unavailable", STATS["dir_failure_samples"][0]["reason"]
             )
+            self.assertFalse(STATS["dir_session_invalid"])
+
+    def test_list_entries_flags_session_invalid_when_drive_root_fetch_fails_auth(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+
+            AUTH_ERROR = RuntimeError("Missing X-APPLE-WEBAUTH-USER cookie")
+            API = Mock()
+            type(API).drive = PropertyMock(side_effect=AUTH_ERROR)
+            CLIENT.api = API
+
+            CLIENT.list_entries()
+
+            STATS = CLIENT.get_traversal_stats_snapshot()
+            self.assertTrue(STATS["dir_session_invalid"])
 
     def test_list_entries_supports_name_list_payload(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
@@ -498,6 +546,37 @@ class TestICloudClientTraversal(unittest.TestCase):
         )
         self.assertTrue(any("reason=RuntimeError" in LINE for LINE in DEBUG_LINES))
         self.assertFalse(any("temporary secret detail" in LINE for LINE in DEBUG_LINES))
+
+    def test_directory_read_retry_flags_session_invalid_on_final_hard_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CLIENT = ICloudDriveClient(build_config_for_icloud(TMPDIR))
+            NODE = Mock()
+            AUTH_ERROR = RuntimeError("Missing X-APPLE-WEBAUTH-TOKEN cookie")
+            NODE.dir.side_effect = [AUTH_ERROR] * DIR_RETRY_ATTEMPTS
+
+            with patch("app.icloud_client.time.sleep"):
+                PAYLOAD = CLIENT._read_dir_payload_with_retry(NODE, "docs")
+
+        self.assertIsNone(PAYLOAD)
+        STATS = CLIENT.get_traversal_stats_snapshot()
+        self.assertTrue(STATS["dir_session_invalid"])
+
+    def test_directory_read_retry_leaves_session_invalid_false_for_other_errors(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CLIENT = ICloudDriveClient(build_config_for_icloud(TMPDIR))
+            NODE = Mock()
+            NODE.dir.side_effect = [RuntimeError("connect timeout")] * DIR_RETRY_ATTEMPTS
+
+            with patch("app.icloud_client.time.sleep"):
+                PAYLOAD = CLIENT._read_dir_payload_with_retry(NODE, "docs")
+
+        self.assertIsNone(PAYLOAD)
+        STATS = CLIENT.get_traversal_stats_snapshot()
+        self.assertFalse(STATS["dir_session_invalid"])
 
     def test_walk_node_parallel_collects_and_sorts_entries(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:

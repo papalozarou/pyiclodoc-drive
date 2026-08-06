@@ -36,6 +36,7 @@ from app.syncer import (
     format_slow_directory_summary,
     get_transfer_failure_reason,
     get_traversal_hard_failure_count,
+    get_traversal_session_invalid_flag,
     get_auto_worker_count,
     get_transfer_worker_count,
     is_known_package_path,
@@ -86,6 +87,10 @@ class FakeClient:
         self.download_calls += 1
         if REMOTE_PATH == "docs/explode.txt":
             raise RuntimeError("boom")
+        if REMOTE_PATH == "docs/session_dead.txt":
+            ERROR = RuntimeError("Authentication required for Account.")
+            ERROR.code = 421
+            raise ERROR
         RESULT = self.download_results.get(REMOTE_PATH, True)
         if RESULT:
             LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -307,6 +312,24 @@ class TestSyncerHelpers(unittest.TestCase):
     def test_get_traversal_hard_failure_count_clamps_negative_value(self) -> None:
         CLIENT = SimpleNamespace(get_traversal_stats_snapshot=lambda: {"dir_hard_failures": -2})
         self.assertEqual(get_traversal_hard_failure_count(CLIENT), 0)
+
+# --------------------------------------------------------------------------
+# This test confirms the session-invalid flag falls back safely when the
+# client returns a malformed stats payload.
+# --------------------------------------------------------------------------
+    def test_get_traversal_session_invalid_flag_handles_malformed_snapshot(self) -> None:
+        CLIENT = SimpleNamespace(get_traversal_stats_snapshot=lambda: None)
+        self.assertFalse(get_traversal_session_invalid_flag(CLIENT))
+
+# --------------------------------------------------------------------------
+# This test confirms the session-invalid flag reads a true value from the
+# traversal stats snapshot.
+# --------------------------------------------------------------------------
+    def test_get_traversal_session_invalid_flag_reads_true_value(self) -> None:
+        CLIENT = SimpleNamespace(
+            get_traversal_stats_snapshot=lambda: {"dir_session_invalid": True}
+        )
+        self.assertTrue(get_traversal_session_invalid_flag(CLIENT))
 
 # --------------------------------------------------------------------------
 # This test confirms ensure_directories creates nested paths and emits a
@@ -895,6 +918,7 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(SUMMARY.transferred_bytes, 0)
         self.assertEqual(SUMMARY.skipped_files, 0)
         self.assertEqual(SUMMARY.error_files, 1)
+        self.assertFalse(SUMMARY.session_invalid)
         self.assertNotIn("docs/explode.txt", NEW_MANIFEST)
         self.assertTrue(
             any(
@@ -903,6 +927,40 @@ class TestSyncerHelpers(unittest.TestCase):
                 for CALL in LOG_LINE.call_args_list
             )
         )
+
+# --------------------------------------------------------------------------
+# This test confirms a session-invalid download failure at the worker
+# boundary is classified and surfaced on the sync summary.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_flags_session_invalid_from_download_failure(
+        self,
+    ) -> None:
+        ENTRIES = [
+            RemoteEntry("docs/session_dead.txt", False, 1, "2026-03-09T00:00:00Z"),
+        ]
+        CLIENT = FakeClient(ENTRIES, {})
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            SUMMARY, _NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), {})
+
+        self.assertEqual(SUMMARY.error_files, 1)
+        self.assertTrue(SUMMARY.session_invalid)
+
+# --------------------------------------------------------------------------
+# This test confirms a session-invalid traversal failure is carried through
+# to the sync summary even when no download fails.
+# --------------------------------------------------------------------------
+    def test_perform_incremental_sync_flags_session_invalid_from_traversal_stats(
+        self,
+    ) -> None:
+        ENTRIES = [RemoteEntry("docs/file.txt", False, 1, "2026-03-09T00:00:00Z")]
+        CLIENT = FakeClient(ENTRIES, {"docs/file.txt": True})
+        CLIENT.traversal_stats["dir_session_invalid"] = True
+
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            SUMMARY, _NEW_MANIFEST = perform_incremental_sync(CLIENT, Path(TMPDIR), {})
+
+        self.assertTrue(SUMMARY.session_invalid)
 
 # --------------------------------------------------------------------------
 # This test confirms incremental sync emits debug diagnostics when a log
