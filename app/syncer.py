@@ -21,6 +21,7 @@ from app.icloud_client import (
     RemoteEntry,
     TraversalWorkerTimeoutError,
     TraversalStatsSnapshot,
+    is_session_invalid_failure,
 )
 from app.logger import log_line
 
@@ -89,6 +90,7 @@ class SyncResult:
     traversal_complete: bool = True
     traversal_hard_failures: int = 0
     delete_phase_skipped: bool = False
+    session_invalid: bool = False
 
 
 # ------------------------------------------------------------------------------
@@ -366,6 +368,7 @@ def perform_incremental_sync(
 
     TRAVERSAL_HARD_FAILURES = get_traversal_hard_failure_count(CLIENT)
     TRAVERSAL_COMPLETE = TRAVERSAL_HARD_FAILURES == 0
+    SESSION_INVALID = get_traversal_session_invalid_flag(CLIENT)
     TRAVERSAL_DURATION_SECONDS = time.monotonic() - TRAVERSAL_STARTED_EPOCH
     FILES = [ENTRY for ENTRY in ENTRIES if not ENTRY.is_dir]
     DIRECTORIES = [ENTRY for ENTRY in ENTRIES if ENTRY.is_dir]
@@ -556,6 +559,8 @@ def perform_incremental_sync(
                         FAILURE_REASON_COUNTS[ERROR_REASON] = (
                             FAILURE_REASON_COUNTS.get(ERROR_REASON, 0) + 1
                         )
+                        if is_session_invalid_failure(ERROR):
+                            SESSION_INVALID = True
                         EXISTING_METADATA = MANIFEST.get(ENTRY.path)
 
                         if EXISTING_METADATA is not None:
@@ -745,6 +750,7 @@ def perform_incremental_sync(
         traversal_complete=TRAVERSAL_COMPLETE,
         traversal_hard_failures=TRAVERSAL_HARD_FAILURES,
         delete_phase_skipped=DELETE_PHASE_SKIPPED,
+        session_invalid=SESSION_INVALID,
     ), NEW_MANIFEST
 
 
@@ -758,6 +764,20 @@ def perform_incremental_sync(
 def get_traversal_hard_failure_count(CLIENT: TraversalStatsClient) -> int:
     STATS = get_traversal_stats_snapshot(CLIENT)
     return max(int(STATS.get("dir_hard_failures", 0)), 0)
+
+
+# ------------------------------------------------------------------------------
+# This function returns whether traversal recorded an Apple session
+# invalidation among its hard failures.
+#
+# 1. "CLIENT" exposes traversal stats through the sync client contract.
+#
+# Returns: True when a traversal hard failure was classified as a dead
+# session.
+# ------------------------------------------------------------------------------
+def get_traversal_session_invalid_flag(CLIENT: TraversalStatsClient) -> bool:
+    STATS = get_traversal_stats_snapshot(CLIENT)
+    return bool(STATS.get("dir_session_invalid", False))
 
 
 # ------------------------------------------------------------------------------
@@ -794,6 +814,7 @@ def build_empty_traversal_stats_snapshot() -> TraversalStatsSnapshot:
         "dir_retryable_errors": 0,
         "dir_hard_failures": 0,
         "dir_failure_samples": [],
+        "dir_session_invalid": False,
         "slow_dirs": [],
     }
 

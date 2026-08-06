@@ -978,10 +978,49 @@ class TestMainRuntimeHelpers(unittest.TestCase):
             self.assertIn("Errors: 0", NOTIFY.call_args_list[1].args[1])
             self.assertIn("Duration:", NOTIFY.call_args_list[1].args[1])
             self.assertIn("Average speed:", NOTIFY.call_args_list[1].args[1])
+            self.assertNotIn(
+                "Status: Failure looks like a dead iCloud session",
+                NOTIFY.call_args_list[1].args[1],
+            )
             self.assertTrue(RESULT.manifest_updated)
             self.assertEqual(
                 LOG_LINE.call_args_list[-1].args[2],
                 "Backup complete. Transferred 2/3, skipped 1, errors 0.",
+            )
+
+# --------------------------------------------------------------------------
+# This test confirms a session-invalid sync summary adds a status line to
+# the backup completion message without affecting manifest handling.
+# --------------------------------------------------------------------------
+    def test_run_backup_reports_session_invalid_status_line(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_runtime(TMPDIR)
+            TELEGRAM = TelegramConfig("token", "12345")
+            LOG_FILE = CONFIG.logs_dir / "pyiclodoc-drive-worker.log"
+            CLIENT = Mock()
+            SUMMARY = SyncResult(
+                total_files=1,
+                transferred_files=0,
+                transferred_bytes=0,
+                deleted_files=0,
+                deleted_directories=0,
+                delete_errors=0,
+                skipped_files=0,
+                error_files=1,
+                session_invalid=True,
+            )
+
+            with patch("app.main.load_manifest", return_value={}):
+                with patch("app.main.perform_incremental_sync", return_value=(SUMMARY, {})):
+                    with patch("app.main.save_manifest"):
+                        with patch("app.main.notify") as NOTIFY:
+                            with patch("app.main.log_line"):
+                                run_backup(CLIENT, CONFIG, TELEGRAM, LOG_FILE, "scheduled")
+
+            self.assertIn(
+                "Status: Failure looks like a dead iCloud session, "
+                "reauthentication may be required",
+                NOTIFY.call_args_list[1].args[1],
             )
 
 # --------------------------------------------------------------------------

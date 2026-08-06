@@ -27,6 +27,8 @@ TRAVERSAL_FAILURE_SAMPLE_LIMIT = 5
 TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS = 30.0
 ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS = 10.0
 ICLOUD_SESSION_READ_TIMEOUT_SECONDS = 30.0
+SESSION_INVALID_HTTP_CODE = 421
+SESSION_INVALID_MARKER_TEXT = "X-APPLE-WEBAUTH"
 
 
 # ------------------------------------------------------------------------------
@@ -89,6 +91,7 @@ class TraversalStatsSnapshot(TypedDict):
     dir_retryable_errors: int
     dir_hard_failures: int
     dir_failure_samples: list[TraversalFailureSample]
+    dir_session_invalid: bool
     slow_dirs: list[SlowDirectorySample]
 
 
@@ -113,6 +116,31 @@ class TraversalProgressSnapshot(TypedDict):
 # ------------------------------------------------------------------------------
 class TraversalWorkerTimeoutError(RuntimeError):
     pass
+
+
+# ------------------------------------------------------------------------------
+# This function checks whether an exception represents an Apple session
+# invalidation (a dead auth cookie), rather than some other failure.
+#
+# 1. "ERROR" is the exception raised by a failed iCloud API call.
+#
+# Returns: True when "ERROR" looks like an Apple auth-cookie failure.
+#
+# N.B.
+# "PyiCloudAPIResponseException" (pyicloud "exceptions.py") exposes a
+# structured ".code" attribute populated from the HTTP status; 421 is
+# "AppleAuthError.LOGIN_TOKEN_EXPIRED" in pyicloud's own "const.py", which is
+# what Apple returns when the session's auth cookies are no longer valid.
+# ".code" is checked first because it does not depend on Apple's error-body
+# wording staying stable, unlike a string match. The "X-APPLE-WEBAUTH" text
+# match is a fallback for exceptions that do not expose ".code" at all.
+# ------------------------------------------------------------------------------
+def is_session_invalid_failure(ERROR: Exception) -> bool:
+    CODE = getattr(ERROR, "code", None)
+    if CODE is not None:
+        return str(CODE) == str(SESSION_INVALID_HTTP_CODE)
+
+    return SESSION_INVALID_MARKER_TEXT in str(ERROR)
 
 
 # ------------------------------------------------------------------------------
@@ -226,6 +254,7 @@ class ICloudDriveClient:
             "dir_retryable_errors": 0,
             "dir_hard_failures": 0,
             "dir_failure_samples": [],
+            "dir_session_invalid": False,
             "slow_dirs": [],
         }
 
@@ -335,6 +364,8 @@ class ICloudDriveClient:
     # 4. "STATUS" is one of: "ok", "non_directory", "retryable_error",
     #    "hard_failure".
     # 5. "FAILURE_REASON" is short exception context for failure states.
+    # 6. "IS_SESSION_INVALID" marks a "hard_failure" as an Apple session
+    #    invalidation rather than some other failure.
     #
     # Returns: None.
     # --------------------------------------------------------------------------
@@ -345,6 +376,7 @@ class ICloudDriveClient:
         IS_RETRY: bool,
         STATUS: str,
         FAILURE_REASON: str = "",
+        IS_SESSION_INVALID: bool = False,
     ) -> None:
         with self._stats_lock:
             self._traversal_stats["dir_reads"] += 1
@@ -359,6 +391,8 @@ class ICloudDriveClient:
                 self._traversal_stats["dir_non_directory"] += 1
             elif STATUS == "hard_failure":
                 self._traversal_stats["dir_hard_failures"] += 1
+                if IS_SESSION_INVALID:
+                    self._traversal_stats["dir_session_invalid"] = True
                 self._record_directory_failure_sample(CURRENT_PATH, STATUS, FAILURE_REASON)
 
             if DURATION_SECONDS < TRAVERSAL_SLOW_DIR_SECONDS:
@@ -436,6 +470,8 @@ class ICloudDriveClient:
     def _record_drive_root_failure(self, ERROR: Exception) -> None:
         with self._stats_lock:
             self._traversal_stats["dir_hard_failures"] += 1
+            if is_session_invalid_failure(ERROR):
+                self._traversal_stats["dir_session_invalid"] = True
             self._record_directory_failure_sample(
                 "/",
                 "hard_failure",
@@ -1040,6 +1076,7 @@ class ICloudDriveClient:
                     IS_RETRY,
                     STATUS,
                     FAILURE_REASON,
+                    is_session_invalid_failure(ERROR),
                 )
 
                 if IS_FINAL_ATTEMPT:
