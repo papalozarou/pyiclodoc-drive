@@ -18,8 +18,8 @@ from app.icloud_client import (
     DIR_RETRY_ATTEMPTS,
     ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS,
     ICLOUD_SESSION_READ_TIMEOUT_SECONDS,
+    TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS,
     ICloudDriveClient,
-    TraversalWorkerTimeoutError,
     is_session_invalid_failure,
 )
 
@@ -606,15 +606,21 @@ class TestICloudClientTraversal(unittest.TestCase):
             self.assertEqual(STATS["directories_completed"], 2)
             self.assertEqual(STATS["directories_pending"], 0)
 
-    def test_walk_node_parallel_raises_controlled_failure_when_worker_stalls(self) -> None:
+    def test_walk_node_parallel_returns_partial_results_when_worker_stalls(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = AppConfig(**(build_config_for_icloud(TMPDIR).__dict__ | {"traversal_workers": 2}))
             CLIENT = ICloudDriveClient(CONFIG)
 
             def fake_wait(PENDING, timeout, return_when):
                 _ = return_when
-                self.assertEqual(timeout, 30.0)
+                self.assertEqual(timeout, TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS)
                 return set(), set(PENDING)
+
+            CLOCK = {"now": 0.0}
+
+            def fake_monotonic():
+                CLOCK["now"] += TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS
+                return CLOCK["now"]
 
             with patch.object(
                 CLIENT,
@@ -622,25 +628,49 @@ class TestICloudClientTraversal(unittest.TestCase):
                 return_value=([], []),
             ):
                 with patch("app.icloud_client.wait", side_effect=fake_wait):
-                    with self.assertRaises(TraversalWorkerTimeoutError) as ERROR:
-                        CLIENT._walk_node_parallel(object(), "")
+                    with patch(
+                        "app.icloud_client.time.monotonic", side_effect=fake_monotonic
+                    ):
+                        RESULT = CLIENT._walk_node_parallel(object(), "")
 
-            self.assertIn("Traversal worker stalled while reading / after 30.0s.", str(ERROR.exception))
+            self.assertEqual(RESULT, [])
             STATS = CLIENT.get_traversal_stats_snapshot()
             self.assertEqual(STATS["dir_hard_failures"], 1)
             self.assertEqual(STATS["directories_completed"], 0)
             self.assertEqual(STATS["directories_pending"], 1)
             self.assertEqual(STATS["workers_active"], 1)
-            self.assertEqual(
-                STATS["dir_failure_samples"],
-                [
-                    {
-                        "path": "/",
-                        "status": "hard_failure",
-                        "reason": "worker_timeout_after_30.0s",
-                    }
-                ],
-            )
+            self.assertEqual(len(STATS["dir_failure_samples"]), 1)
+            FAILURE_SAMPLE = STATS["dir_failure_samples"][0]
+            self.assertEqual(FAILURE_SAMPLE["path"], "/")
+            self.assertEqual(FAILURE_SAMPLE["status"], "hard_failure")
+            self.assertTrue(FAILURE_SAMPLE["reason"].startswith("worker_timeout_after_"))
+
+    def test_walk_node_parallel_does_not_stall_on_a_single_no_progress_poll(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = AppConfig(**(build_config_for_icloud(TMPDIR).__dict__ | {"traversal_workers": 2}))
+            CLIENT = ICloudDriveClient(CONFIG)
+            WAIT_CALLS = {"count": 0}
+
+            def fake_wait(PENDING, timeout, return_when):
+                _ = return_when, timeout
+                WAIT_CALLS["count"] += 1
+                if WAIT_CALLS["count"] == 1:
+                    return set(), set(PENDING)
+                FUTURE = next(iter(PENDING))
+                return {FUTURE}, set()
+
+            with patch.object(
+                CLIENT,
+                "_walk_node_shallow",
+                return_value=([], []),
+            ):
+                with patch("app.icloud_client.wait", side_effect=fake_wait):
+                    RESULT = CLIENT._walk_node_parallel(object(), "")
+
+            self.assertEqual(RESULT, [])
+            self.assertEqual(WAIT_CALLS["count"], 2)
+            STATS = CLIENT.get_traversal_stats_snapshot()
+            self.assertEqual(STATS["dir_hard_failures"], 0)
 
     def test_walk_node_parallel_keeps_waiting_while_progress_advances(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:

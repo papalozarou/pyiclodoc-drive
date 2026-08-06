@@ -53,7 +53,6 @@ from app.syncer import (
     run_first_time_safety_net,
     transfer_if_required,
 )
-from app.icloud_client import TraversalWorkerTimeoutError
 
 
 # ------------------------------------------------------------------------------
@@ -1553,15 +1552,14 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertEqual(NEW_MANIFEST, {})
 
 # --------------------------------------------------------------------------
-# This test confirms traversal worker stalls downgrade into an incomplete
-# sync run instead of escaping as a fatal exception.
+# This test confirms a traversal worker stall downgrades into an incomplete
+# sync run, keeping whatever the client already discovered rather than
+# discarding it.
 # --------------------------------------------------------------------------
     def test_perform_incremental_sync_downgrades_traversal_stall_to_partial_run(self) -> None:
         class StalledClient:
             def list_entries(self):
-                raise TraversalWorkerTimeoutError(
-                    "Traversal worker stalled while reading / after 30.0s."
-                )
+                return [RemoteEntry("docs/found.txt", False, 4, "2026-03-09T00:00:00Z")]
 
             def get_traversal_stats_snapshot(self):
                 return (
@@ -1570,9 +1568,9 @@ class TestSyncerHelpers(unittest.TestCase):
                         "dir_hard_failures": 1,
                         "dir_failure_samples": [
                             {
-                                "path": "/",
+                                "path": "docs/stuck",
                                 "status": "hard_failure",
-                                "reason": "worker_timeout_after_30.0s",
+                                "reason": "worker_timeout_after_190.0s",
                             }
                         ],
                     }
@@ -1580,7 +1578,8 @@ class TestSyncerHelpers(unittest.TestCase):
 
             def download_file(self, REMOTE_PATH, LOCAL_PATH):
                 _ = REMOTE_PATH
-                _ = LOCAL_PATH
+                LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+                LOCAL_PATH.write_bytes(b"data")
                 return DownloadResult(True)
 
             def download_package_tree(self, REMOTE_PATH, LOCAL_PATH):
@@ -1607,32 +1606,19 @@ class TestSyncerHelpers(unittest.TestCase):
                 )
 
             self.assertTrue(STALE_PATH.exists())
+            self.assertTrue((ROOT_DIR / "docs" / "found.txt").exists())
 
-        self.assertEqual(NEW_MANIFEST, {})
+        self.assertIn("docs/found.txt", NEW_MANIFEST)
         self.assertFalse(SUMMARY.traversal_complete)
         self.assertEqual(SUMMARY.traversal_hard_failures, 1)
         self.assertTrue(SUMMARY.delete_phase_skipped)
-        self.assertEqual(SUMMARY.total_files, 0)
-        self.assertTrue(
-            any(
-                CALL.args[1] == "error"
-                and "Traversal failed before completion:" in CALL.args[2]
-                for CALL in LOG_LINE.call_args_list
-            )
-        )
+        self.assertEqual(SUMMARY.total_files, 1)
+        self.assertEqual(SUMMARY.transferred_files, 1)
         self.assertTrue(
             any(
                 CALL.args[1] == "error"
                 and "Traversal incomplete. Delete phase and manifest save will be skipped"
                 in CALL.args[2]
-                for CALL in LOG_LINE.call_args_list
-            )
-        )
-        self.assertTrue(
-            any(
-                CALL.args[1] == "debug"
-                and "Traversal incomplete detail: reason=Traversal worker stalled "
-                "while reading / after 30.0s." in CALL.args[2]
                 for CALL in LOG_LINE.call_args_list
             )
         )
@@ -1683,51 +1669,6 @@ class TestSyncerHelpers(unittest.TestCase):
         self.assertTrue(any("Traversal progress detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("Traversal delta detail:" in LINE for LINE in DEBUG_LINES))
         self.assertTrue(any("dir_reads=1" in LINE for LINE in DEBUG_LINES))
-
-    def test_list_entries_with_progress_reraises_traversal_stall(self) -> None:
-        class StalledClient:
-            def list_entries(self):
-                raise TraversalWorkerTimeoutError(
-                    "Traversal worker stalled while reading / after 30.0s."
-                )
-
-            def get_traversal_stats_snapshot(self):
-                return (
-                    build_empty_traversal_stats_snapshot()
-                    | {
-                        "dir_hard_failures": 1,
-                        "dir_failure_samples": [
-                            {
-                                "path": "/",
-                                "status": "hard_failure",
-                                "reason": "worker_timeout_after_30.0s",
-                            }
-                        ],
-                    }
-                )
-
-        with tempfile.TemporaryDirectory() as TMPDIR:
-            LOG_FILE = Path(TMPDIR) / "pyiclodoc-drive-worker.log"
-            with patch("app.syncer.log_line") as LOG_LINE:
-                with self.assertRaises(TraversalWorkerTimeoutError) as ERROR:
-                    list_entries_with_progress(
-                        StalledClient(),
-                        LOG_FILE,
-                        time.monotonic(),
-                    )
-
-        self.assertEqual(
-            str(ERROR.exception),
-            "Traversal worker stalled while reading / after 30.0s.",
-        )
-        self.assertTrue(
-            any(
-                CALL.args[1] == "error"
-                and "Traversal failed before completion: Traversal worker stalled "
-                "while reading / after 30.0s." in CALL.args[2]
-                for CALL in LOG_LINE.call_args_list
-            )
-        )
 
 # --------------------------------------------------------------------------
 # This test confirms a successful empty traversal still returns a clean empty
