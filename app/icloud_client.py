@@ -25,6 +25,8 @@ TRAVERSAL_SLOW_DIR_SECONDS = 5.0
 TRAVERSAL_SLOW_DIR_LIMIT = 5
 TRAVERSAL_FAILURE_SAMPLE_LIMIT = 5
 TRAVERSAL_WORKER_WAIT_TIMEOUT_SECONDS = 30.0
+ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS = 10.0
+ICLOUD_SESSION_READ_TIMEOUT_SECONDS = 30.0
 
 
 # ------------------------------------------------------------------------------
@@ -568,10 +570,67 @@ class ICloudDriveClient:
             "iCloud service creation started: "
             f"cookie_directory={self.config.cookie_dir.as_posix()}."
         )
-        return PyiCloudService(
+        SERVICE = PyiCloudService(
             self.config.icloud_email,
             self.config.icloud_password,
             **SERVICE_KWARGS,
+        )
+        self._set_default_session_timeout(SERVICE)
+        return SERVICE
+
+    # --------------------------------------------------------------------------
+    # This function wraps a "PyiCloudService" session so that every request
+    # that does not specify its own "timeout" gets a bounded connect/read
+    # timeout instead of blocking forever.
+    #
+    # 1. "SERVICE" is the "PyiCloudService" instance whose session should be
+    #    wrapped.
+    #
+    # Returns: None.
+    #
+    # N.B.
+    # pyicloud's "PyiCloudSession" (a "requests.Session" subclass, see
+    # "pyicloud/session.py") never passes a "timeout" to any of its own
+    # request calls, so a stalled Apple response can block the underlying
+    # socket read indefinitely; there is no library-level or OS-level bound
+    # on that wait. "request" and "request_raw" are "PyiCloudSession"'s only
+    # two entry points: every "get()"/"post()" call funnels through
+    # "request()", and pyicloud's HSA2 challenge polling
+    # ("pyicloud/hsa2_bridge.py") calls "request_raw()" directly, bypassing
+    # "request()". Both are wrapped here so "global" coverage is actually
+    # global rather than missing the HSA2 path.
+    #
+    # This wraps the two methods on this one service instance only, not the
+    # "PyiCloudSession" class, so the change is scoped to this client and
+    # cannot affect any other consumer of pyicloud in the same process. It
+    # still relies on "PyiCloudSession" continuing to expose "request" and
+    # "request_raw" with a "timeout" keyword argument, which pyicloud does
+    # not promise as a stable contract across versions.
+    # --------------------------------------------------------------------------
+    def _set_default_session_timeout(self, SERVICE: PyiCloudService) -> None:
+        DEFAULT_TIMEOUT = (
+            ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS,
+            ICLOUD_SESSION_READ_TIMEOUT_SECONDS,
+        )
+
+        for METHOD_NAME in ("request", "request_raw"):
+            ORIGINAL_METHOD = getattr(SERVICE.session, METHOD_NAME)
+
+            def _add_default_timeout(
+                *ARGS: Any,
+                _ORIGINAL_METHOD: Callable = ORIGINAL_METHOD,
+                **KWARGS: Any,
+            ) -> Any:
+                if KWARGS.get("timeout") is None:
+                    KWARGS["timeout"] = DEFAULT_TIMEOUT
+                return _ORIGINAL_METHOD(*ARGS, **KWARGS)
+
+            setattr(SERVICE.session, METHOD_NAME, _add_default_timeout)
+
+        self._log_debug(
+            "iCloud session default timeout applied: "
+            f"connect_seconds={ICLOUD_SESSION_CONNECT_TIMEOUT_SECONDS}, "
+            f"read_seconds={ICLOUD_SESSION_READ_TIMEOUT_SECONDS}."
         )
 
     # --------------------------------------------------------------------------
