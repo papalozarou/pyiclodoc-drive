@@ -682,6 +682,22 @@ class ICloudDriveClient:
     # This function starts an iCloud authentication attempt.
     #
     # Returns: Tuple "(is_authenticated, details_message)".
+    #
+    # N.B.
+    # When Apple requires 2FA, the delivery route pyicloud chose for the code
+    # is logged at debug level as "iCloud 2FA delivery route: method=...".
+    # The value is one of "trusted_device", "sms", "security_key", or
+    # "unknown", read from pyicloud's public "two_factor_delivery_method"
+    # property. That property only reads challenge data pyicloud already
+    # holds, so it makes no network call.
+    #
+    # pyicloud 2.6.x sent a trusted-device code and an SMS code for every
+    # challenge, but only checked codes against the trusted-device endpoint,
+    # so SMS codes were always rejected. pyicloud 2.7.0 sends one code by one
+    # route and validates against that route. The log line lets an operator
+    # confirm which route was used when a code arrives.
+    #
+    # - https://github.com/timlaing/pyicloud
     # --------------------------------------------------------------------------
     def start_authentication(self) -> tuple[bool, str]:
         self.prepare_compat_paths()
@@ -697,6 +713,12 @@ class ICloudDriveClient:
         )
 
         if REQUIRES_2FA:
+            DELIVERY_METHOD = getattr(
+                self.api,
+                "two_factor_delivery_method",
+                "unknown",
+            )
+            self._log_debug(f"iCloud 2FA delivery route: method={DELIVERY_METHOD}.")
             self._log_debug("iCloud authentication blocked: reason=requires_2fa.")
             return False, "Two-factor code is required."
 

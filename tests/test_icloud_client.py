@@ -2,6 +2,8 @@
 # This test module verifies iCloud client auth, traversal, and download helpers.
 # ------------------------------------------------------------------------------
 
+import ast
+import importlib.metadata
 from io import BytesIO
 from pathlib import Path
 import tempfile
@@ -274,6 +276,49 @@ class TestICloudClientAuth(unittest.TestCase):
         )
         self.assertFalse(any("123456" in LINE for LINE in DEBUG_LINES))
 
+    def test_start_authentication_logs_2fa_delivery_route(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            API = Mock(requires_2fa=True, requires_2sa=True, is_trusted_session=False)
+            API.two_factor_delivery_method = "trusted_device"
+
+            with patch("app.icloud_client.log_line") as LOG_LINE:
+                with patch("app.icloud_client.PyiCloudService", return_value=API):
+                    IS_AUTHENTICATED, DETAILS = CLIENT.start_authentication()
+
+        self.assertFalse(IS_AUTHENTICATED)
+        self.assertEqual(DETAILS, "Two-factor code is required.")
+        DEBUG_LINES = [
+            CALL.args[2]
+            for CALL in LOG_LINE.call_args_list
+            if CALL.args[1] == "debug"
+        ]
+        self.assertIn(
+            "iCloud 2FA delivery route: method=trusted_device.",
+            DEBUG_LINES,
+        )
+
+    def test_start_authentication_skips_delivery_route_without_2fa(self) -> None:
+        with tempfile.TemporaryDirectory() as TMPDIR:
+            CONFIG = build_config_for_icloud(TMPDIR)
+            CLIENT = ICloudDriveClient(CONFIG)
+            API = Mock(requires_2fa=False, requires_2sa=False, is_trusted_session=True)
+
+            with patch("app.icloud_client.log_line") as LOG_LINE:
+                with patch("app.icloud_client.PyiCloudService", return_value=API):
+                    IS_AUTHENTICATED, _ = CLIENT.start_authentication()
+
+        self.assertTrue(IS_AUTHENTICATED)
+        DEBUG_LINES = [
+            CALL.args[2]
+            for CALL in LOG_LINE.call_args_list
+            if CALL.args[1] == "debug"
+        ]
+        self.assertFalse(
+            any("iCloud 2FA delivery route:" in LINE for LINE in DEBUG_LINES)
+        )
+
     def test_authenticate_two_step_returns_failure(self) -> None:
         with tempfile.TemporaryDirectory() as TMPDIR:
             CONFIG = build_config_for_icloud(TMPDIR)
@@ -331,6 +376,67 @@ class TestICloudClientAuth(unittest.TestCase):
                 ),
             )
             API.trust_session.assert_called_once()
+
+
+# ------------------------------------------------------------------------------
+# These tests pin the pyicloud version that sends one 2FA code per challenge.
+#
+# pyicloud 2.6.x added "PyiCloudService._request_2fa_code()", which sent a
+# trusted-device code and an SMS code for every challenge but only validated
+# against the trusted-device endpoint, so SMS codes were always rejected.
+# pyicloud 2.7.0 removed it and calls the public "request_2fa_code()" instead,
+# which sends one code by one route and validates against that route.
+#
+# 1. "test_requirements_pin_pyicloud_single_delivery_version" reads
+#    "requirements.txt" and fails if the pin drops below 2.7.0. It runs
+#    everywhere, including CI.
+# 2. "test_installed_pyicloud_has_single_delivery_method" inspects the real
+#    installed library and fails if the double-send method is back or the
+#    single-route method is gone.
+#
+# N.B.
+# CI does not install "requirements.txt", and "install_dependency_stubs()"
+# replaces "pyicloud" with a stub in "sys.modules". The second test therefore
+# loads "pyicloud.base" from the installed distribution's own files, and is
+# skipped when pyicloud is not installed.
+#
+# - https://docs.python.org/3/library/importlib.metadata.html
+# ------------------------------------------------------------------------------
+class TestPyiCloudSingleDeliveryContract(unittest.TestCase):
+    def test_requirements_pin_pyicloud_single_delivery_version(self) -> None:
+        REQUIREMENTS_PATH = Path(__file__).resolve().parents[1] / "requirements.txt"
+        PIN_LINES = [
+            LINE.strip()
+            for LINE in REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines()
+            if LINE.strip().startswith("pyicloud==")
+        ]
+
+        self.assertEqual(len(PIN_LINES), 1)
+        VERSION_TEXT = PIN_LINES[0].split("==", 1)[1]
+        VERSION_PARTS = tuple(int(PART) for PART in VERSION_TEXT.split(".")[:2])
+        self.assertGreaterEqual(VERSION_PARTS, (2, 7))
+
+    def test_installed_pyicloud_has_single_delivery_method(self) -> None:
+        try:
+            DISTRIBUTION = importlib.metadata.distribution("pyicloud")
+        except importlib.metadata.PackageNotFoundError:
+            self.skipTest("pyicloud is not installed; CI uses the stub.")
+
+        BASE_PATH = Path(DISTRIBUTION.locate_file("pyicloud/base.py"))
+        BASE_SOURCE = BASE_PATH.read_text(encoding="utf-8")
+        SERVICE_CLASS = next(
+            NODE
+            for NODE in ast.walk(ast.parse(BASE_SOURCE))
+            if isinstance(NODE, ast.ClassDef) and NODE.name == "PyiCloudService"
+        )
+        METHOD_NAMES = {
+            NODE.name
+            for NODE in SERVICE_CLASS.body
+            if isinstance(NODE, ast.FunctionDef)
+        }
+
+        self.assertNotIn("_request_2fa_code", METHOD_NAMES)
+        self.assertIn("request_2fa_code", METHOD_NAMES)
 
 
 # ------------------------------------------------------------------------------
